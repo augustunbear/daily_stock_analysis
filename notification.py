@@ -70,7 +70,7 @@ SMTP_CONFIGS = {
     # 139邮箱
     "139.com": {"server": "smtp.139.com", "port": 465, "ssl": True},
     # yummigo
-    "yummigo.de": {"server": "smtp.hostinger.com", "port": 587, "ssl": True},
+    "yummigo.de": {"server": "smtp.hostinger.com", "port": 587, "ssl": False},
 }
 
 
