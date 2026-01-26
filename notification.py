@@ -25,6 +25,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from enum import Enum
+from email.utils import formataddr, formatdate, make_msgid
 
 import requests
 
@@ -1687,7 +1688,8 @@ class NotificationService:
             # 构建邮件
             msg = MIMEMultipart('alternative')
             msg['Subject'] = Header(subject, 'utf-8')
-            msg['From'] = sender
+            sender_name = "A股智能分析报告"
+            msg["From"] = formataddr((sender_name, sender))
             msg['To'] = ', '.join(receivers)
             
             # 添加纯文本和 HTML 两个版本
