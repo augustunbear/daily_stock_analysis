@@ -44,7 +44,12 @@ from feishu_doc import FeishuDocManager
 from config import get_config, Config
 from storage import get_db, DatabaseManager
 from data_provider import DataFetcherManager
-from data_provider.akshare_fetcher import AkshareFetcher, RealtimeQuote, ChipDistribution
+try:
+    from data_provider.akshare_fetcher import AkshareFetcher, RealtimeQuote, ChipDistribution
+except ImportError:
+    AkshareFetcher = None
+    RealtimeQuote = None
+    ChipDistribution = None
 from analyzer import GeminiAnalyzer, AnalysisResult, STOCK_NAME_MAP
 from notification import NotificationService, NotificationChannel, send_daily_report
 from bot.models import BotMessage

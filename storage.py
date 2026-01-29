@@ -124,7 +124,12 @@ from config import get_config
 logger = logging.getLogger(__name__)
 
 # SQLAlchemy ORM 基类
-Base = declarative_base()
+if SQLALCHEMY_AVAILABLE:
+    Base = declarative_base()
+else:
+    # 占位符Base类
+    class Base:
+        metadata = None
 
 
 # === 数据模型定义 ===
