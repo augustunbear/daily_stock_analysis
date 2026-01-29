@@ -2659,7 +2659,9 @@ class NotificationService:
                 elif channel == NotificationChannel.TELEGRAM:
                     result = self.send_to_telegram(content)
                 elif channel == NotificationChannel.EMAIL:
-                    result = self.send_to_email(content)
+                    # 智能生成邮件标题
+                    email_subject = self._generate_email_subject(content)
+                    result = self.send_to_email(content, email_subject)
                 elif channel == NotificationChannel.PUSHOVER:
                     result = self.send_to_pushover(content)
                 elif channel == NotificationChannel.CUSTOM:
@@ -2681,6 +2683,68 @@ class NotificationService:
         
         logger.info(f"通知发送完成：成功 {success_count} 个，失败 {fail_count} 个")
         return success_count > 0 or context_success
+    
+    def _generate_email_subject(self, content: str) -> str:
+        """
+        智能生成邮件标题
+        
+        根据内容分析生成包含统计信息的标题
+        
+        Args:
+            content: 邮件内容
+            
+        Returns:
+            生成的邮件标题
+        """
+        from datetime import datetime
+        import re
+        
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        try:
+            # 尝试从内容中提取统计信息
+            # 格式1: "共分析 X 只股票 | 🟢买入:X 🟡观望:X 🔴卖出:X"
+            pattern1 = r'共分析\s*\**(\d+)\**\s*只股票.*?🟢买入:(\d+).*?🟡观望:(\d+).*?🔴卖出:(\d+)'
+            match1 = re.search(pattern1, content, re.DOTALL)
+            
+            if match1:
+                total, buy, hold, sell = match1.groups()
+                return f"📈 股市分析报告 - {date_str} | 共{total}只 | 🟢买入:{buy} 🟡观望:{hold} 🔴卖出:{sell}"
+            
+            # 格式2: "X只股票 | 🟢买入:X 🟡观望:X 🔴卖出:X"
+            pattern2 = r'(\d+)只股票.*?🟢买入:(\d+).*?🟡观望:(\d+).*?🔴卖出:(\d+)'
+            match2 = re.search(pattern2, content, re.DOTALL)
+            
+            if match2:
+                total, buy, hold, sell = match2.groups()
+                return f"📈 股市分析报告 - {date_str} | 共{total}只 | 🟢买入:{buy} 🟡观望:{hold} 🔴卖出:{sell}"
+            
+            # 格式3: 单股报告，提取股票名称和建议
+            pattern3 = r'###\s*[🟢🟡🔴]\s*([^()]+)\s*\(([^)]+)\)'
+            match3 = re.search(pattern3, content)
+            
+            if match3:
+                stock_name = match3.group(1).strip()
+                stock_code = match3.group(2).strip()
+                
+                # 提取操作建议
+                advice_pattern = r'操作建议[：:]([^*\n]+)'
+                advice_match = re.search(advice_pattern, content)
+                advice = advice_match.group(1).strip() if advice_match else "分析"
+                
+                return f"📈 {stock_name}({stock_code}) {advice} - {date_str}"
+            
+            # 默认标题
+            if "决策仪表盘" in content:
+                return f"📈 决策仪表盘报告 - {date_str}"
+            elif "分析报告" in content:
+                return f"📈 股票分析报告 - {date_str}"
+            else:
+                return f"📈 A股智能分析报告 - {date_str}"
+                
+        except Exception as e:
+            logger.warning(f"智能生成邮件标题失败，使用默认标题: {e}")
+            return f"📈 股市分析报告 - {date_str}"
     
     def _send_chunked_messages(self, content: str, max_length: int) -> bool:
         """
