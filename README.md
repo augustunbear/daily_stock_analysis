@@ -1,4 +1,4 @@
-# 📈 A股智能分析系统
+# 📈 全球股市智能分析系统
 
 [![GitHub stars](https://img.shields.io/github/stars/ZhuLinsen/daily_stock_analysis?style=social)](https://github.com/ZhuLinsen/daily_stock_analysis/stargazers)
 [![CI](https://github.com/ZhuLinsen/daily_stock_analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/ZhuLinsen/daily_stock_analysis/actions/workflows/ci.yml)
@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Ready-2088FF?logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
-> 🤖 基于 AI 大模型的 A/H 股自选股智能分析系统，每日自动分析并推送「决策仪表盘」到企业微信/飞书/Telegram/邮箱
+> 🌍 基于 AI 大模型的全球股市智能分析系统，支持中美欧三大经济体股市，每日自动分析并推送「决策仪表盘」到企业微信/飞书/Telegram/邮箱
 
 ![运行效果演示](./sources/all_2026-01-13_221547.gif)
 
@@ -14,15 +14,19 @@
 
 ### 🎯 核心功能
 - **AI 决策仪表盘** - 一句话核心结论 + 精确买卖点位 + 检查清单
-- **多维度分析** - 技术面 + 筹码分布 + 舆情情报 + 实时行情
-- **大盘复盘** - 每日市场概览、板块涨跌、北向资金
+- **🌍 多市场支持** - 支持中国A股、港股、美股、欧洲股市统一分析
+- **智能市场路由** - 自动识别股票代码所属市场，选择最优数据源
+- **多维度分析** - 技术面 + 筹码分布 + 舆情情报 + 实时行情 + 财报数据
+- **大盘复盘** - 每日市场概览、板块涨跌、北向资金、全球指数联动
 - **多渠道推送** - 支持企业微信、飞书、Telegram、邮件（自动识别）
 - **零成本部署** - GitHub Actions 免费运行，无需服务器
 - **💰 白嫖 Gemini API** - Google AI Studio 提供免费额度，个人使用完全够用
 - **🔄 多模型支持** - 支持 OpenAI 兼容 API（DeepSeek、通义千问等）作为备选
 
 ### 📊 数据来源
-- **行情数据**: AkShare（免费）、Tushare、Baostock、YFinance
+- **中国股市**: AkShare、Tushare、Efinance、Baostock
+- **美国股市**: Yahoo Finance、Alpha Vantage（含盘前盘后数据）
+- **欧洲股市**: Yahoo Finance、Alpha Vantage（支持伦敦、法兰克福、巴黎等交易所）
 - **新闻搜索**: Tavily、SerpAPI、Bocha
 - **AI 分析**: 
   - 主力：Google Gemini（gemini-3-flash-preview）—— [免费获取](https://aistudio.google.com/)
@@ -87,6 +91,7 @@
 | `BOCHA_API_KEYS` | [博查搜索](https://open.bocha.cn/) Web Search API（中文搜索优化，支持AI摘要，多个key用逗号分隔） | 可选 |
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/) 备用搜索 | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/) Token | 可选 |
+| `ALPHA_VANTAGE_KEY` | [Alpha Vantage](https://www.alphavantage.co/) API Key（美股、欧洲股市备用数据源） | 可选 |
 
 #### 3. 启用 Actions
 

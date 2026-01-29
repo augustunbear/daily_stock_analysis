@@ -268,12 +268,14 @@ class DataFetcherManager:
           2. TushareFetcher (Priority 2)
           3. BaostockFetcher (Priority 3)
           4. YfinanceFetcher (Priority 4)
-        """
+"""
         from .efinance_fetcher import EfinanceFetcher
         from .akshare_fetcher import AkshareFetcher
         from .tushare_fetcher import TushareFetcher
         from .baostock_fetcher import BaostockFetcher
         from .yfinance_fetcher import YfinanceFetcher
+        from .us_stock_fetcher import USStockFetcher
+        from .eu_stock_fetcher import EUStockFetcher
         from config import get_config
 
         config = get_config()
@@ -284,6 +286,11 @@ class DataFetcherManager:
         tushare = TushareFetcher()  # 会根据 Token 配置自动调整优先级
         baostock = BaostockFetcher()
         yfinance = YfinanceFetcher()
+        
+        # 多市场数据源
+        alpha_vantage_key = getattr(config, 'alpha_vantage_key', None)
+        us_stock = USStockFetcher(alpha_vantage_key=alpha_vantage_key)
+        eu_stock = EUStockFetcher(alpha_vantage_key=alpha_vantage_key)
 
         # 初始化数据源列表
         self._fetchers = [
@@ -292,6 +299,8 @@ class DataFetcherManager:
             tushare,
             baostock,
             yfinance,
+            us_stock,
+            eu_stock,
         ]
 
         # 按优先级排序（Tushare 如果配置了 Token 且初始化成功，优先级为 0）
@@ -306,7 +315,7 @@ class DataFetcherManager:
         self._fetchers.append(fetcher)
         self._fetchers.sort(key=lambda f: f.priority)
     
-    def get_daily_data(
+def get_daily_data(
         self, 
         stock_code: str,
         start_date: Optional[str] = None,
@@ -314,13 +323,15 @@ class DataFetcherManager:
         days: int = 30
     ) -> Tuple[pd.DataFrame, str]:
         """
-        获取日线数据（自动切换数据源）
+        获取日线数据（智能市场路由 + 自动切换数据源）
         
-        故障切换策略：
-        1. 从最高优先级数据源开始尝试
-        2. 捕获异常后自动切换到下一个
-        3. 记录每个数据源的失败原因
-        4. 所有数据源失败后抛出详细异常
+        路由策略：
+        1. 识别股票代码所属市场
+        2. 优先选择该市场的专用数据源
+        3. 按优先级尝试数据源
+        4. 捕获异常后自动切换到下一个
+        5. 记录每个数据源的失败原因
+        6. 所有数据源失败后抛出详细异常
         
         Args:
             stock_code: 股票代码
@@ -334,9 +345,50 @@ class DataFetcherManager:
         Raises:
             DataFetchError: 所有数据源都失败时抛出
         """
+        try:
+            # 导入市场识别模块
+            from market_types import Market
+            market = Market.from_stock_code(stock_code)
+            logger.debug(f"股票 {stock_code} 识别为 {market.get_display_name()}")
+        except Exception as e:
+            logger.warning(f"市场识别失败，使用通用路由: {e}")
+            market = None
+        
         errors = []
         
-        for fetcher in self._fetchers:
+        # 智能排序：优先选择对应市场的数据源
+        fetchers_to_try = self._fetchers.copy()
+        
+        if market:
+            # 根据市场重新排序数据源
+            market_priorities = {
+                Market.CHINA_A: ['EfinanceFetcher', 'AkshareFetcher', 'TushareFetcher', 'BaostockFetcher'],
+                Market.HONG_KONG: ['AkshareFetcher', 'YfinanceFetcher'],
+                Market.US_NYSE: ['USStockFetcher', 'YfinanceFetcher'],
+                Market.US_NASDAQ: ['USStockFetcher', 'YfinanceFetcher'],
+                Market.US_AMEX: ['USStockFetcher', 'YfinanceFetcher'],
+                Market.UK_LSE: ['EUStockFetcher', 'YfinanceFetcher'],
+                Market.GER_XETRA: ['EUStockFetcher', 'YfinanceFetcher'],
+                Market.FRA_EURONEXT: ['EUStockFetcher', 'YfinanceFetcher'],
+                Market.SWX_SIX: ['EUStockFetcher', 'YfinanceFetcher'],
+                Market.EURONEXT: ['EUStockFetcher', 'YfinanceFetcher'],
+            }
+            
+            # 获取市场优先的数据源名称列表
+            preferred_fetchers = market_priorities.get(market, [])
+            
+            # 重新排序：市场专用数据源在前，其他在后
+            def get_fetcher_priority(fetcher):
+                name = fetcher.name
+                if name in preferred_fetchers:
+                    return preferred_fetchers.index(name)  # 市场专用数据源优先
+                else:
+                    return len(preferred_fetchers) + fetcher.priority  # 其他按原优先级
+            
+            fetchers_to_try.sort(key=get_fetcher_priority)
+        
+        # 按顺序尝试数据源
+        for fetcher in fetchers_to_try:
             try:
                 logger.info(f"尝试使用 [{fetcher.name}] 获取 {stock_code}...")
                 df = fetcher.get_daily_data(

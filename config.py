@@ -36,8 +36,11 @@ class Config:
     feishu_app_secret: Optional[str] = None
     feishu_folder_token: Optional[str] = None  # 目标文件夹 Token
 
-    # === 数据源 API Token ===
+# === 数据源 API Token ===
     tushare_token: Optional[str] = None
+    
+    # Alpha Vantage API（美股、欧洲股市备用数据源）
+    alpha_vantage_key: Optional[str] = None
     
     # === AI 分析配置 ===
     gemini_api_key: Optional[str] = None
@@ -213,9 +216,10 @@ class Config:
         return cls(
             stock_list=stock_list,
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
-            feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
+feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
             tushare_token=os.getenv('TUSHARE_TOKEN'),
+            alpha_vantage_key=os.getenv('ALPHA_VANTAGE_KEY'),
             gemini_api_key=os.getenv('GEMINI_API_KEY'),
             gemini_model=os.getenv('GEMINI_MODEL', 'gemini-3-flash-preview'),
             gemini_model_fallback=os.getenv('GEMINI_MODEL_FALLBACK', 'gemini-2.5-flash'),
