@@ -644,7 +644,7 @@ class StockAnalysisPipeline:
                         non_wechat_success = self.notifier.send_to_feishu(report) or non_wechat_success
                     elif channel == NotificationChannel.TELEGRAM:
                         non_wechat_success = self.notifier.send_to_telegram(report) or non_wechat_success
-elif channel == NotificationChannel.EMAIL:
+                    elif channel == NotificationChannel.EMAIL:
                         # 为邮件生成包含统计信息的标题
                         buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
                         sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
