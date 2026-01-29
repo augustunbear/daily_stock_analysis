@@ -23,12 +23,35 @@ from typing import Optional, List, Tuple
 
 import pandas as pd
 import numpy as np
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
+
+try:
+    from tenacity import (
+        retry,
+        stop_after_attempt,
+        wait_exponential,
+        retry_if_exception_type,
+    )
+    TENACITY_AVAILABLE = True
+except ImportError:
+    TENACITY_AVAILABLE = False
+    
+    def retry(*args, **kwargs):
+        """装饰器占位符"""
+        def decorator(func):
+            return func
+        return decorator
+    
+    def stop_after_attempt(*args, **kwargs):
+        """占位符函数"""
+        pass
+    
+    def wait_exponential(*args, **kwargs):
+        """占位符函数"""
+        pass
+    
+    def retry_if_exception_type(*args, **kwargs):
+        """占位符函数"""
+        pass
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -269,46 +292,60 @@ class DataFetcherManager:
           3. BaostockFetcher (Priority 3)
           4. YfinanceFetcher (Priority 4)
         """
-        from .efinance_fetcher import EfinanceFetcher
-        from .akshare_fetcher import AkshareFetcher
-        from .tushare_fetcher import TushareFetcher
-        from .baostock_fetcher import BaostockFetcher
-        from .yfinance_fetcher import YfinanceFetcher
-        from .us_stock_fetcher import USStockFetcher
-        from .eu_stock_fetcher import EUStockFetcher
+        from . import EfinanceFetcher, AkshareFetcher, TushareFetcher, BaostockFetcher, YfinanceFetcher, USStockFetcher, EUStockFetcher
         from config import get_config
 
         config = get_config()
 
-        # 创建所有数据源实例（优先级在各 Fetcher 的 __init__ 中确定）
-        efinance = EfinanceFetcher()
-        akshare = AkshareFetcher()
-        tushare = TushareFetcher()  # 会根据 Token 配置自动调整优先级
-        baostock = BaostockFetcher()
-        yfinance = YfinanceFetcher()
+        # 初始化数据源列表
+        self._fetchers = []
+
+        # 创建可用的数据源实例
+        fetcher_classes = [
+            (EfinanceFetcher, 'EfinanceFetcher'),
+            (AkshareFetcher, 'AkshareFetcher'),
+            (TushareFetcher, 'TushareFetcher'),
+            (BaostockFetcher, 'BaostockFetcher'),
+            (YfinanceFetcher, 'YfinanceFetcher'),
+        ]
+        
+        for fetcher_class, fetcher_name in fetcher_classes:
+            if fetcher_class is not None:
+                try:
+                    fetcher = fetcher_class()
+                    self._fetchers.append(fetcher)
+                    logger.debug(f"成功初始化 {fetcher_name}")
+                except Exception as e:
+                    logger.warning(f"初始化 {fetcher_name} 失败: {e}")
         
         # 多市场数据源
         alpha_vantage_key = getattr(config, 'alpha_vantage_key', None)
-        us_stock = USStockFetcher(alpha_vantage_key=alpha_vantage_key)
-        eu_stock = EUStockFetcher(alpha_vantage_key=alpha_vantage_key)
+        
+        if USStockFetcher is not None:
+            try:
+                us_stock = USStockFetcher(alpha_vantage_key=alpha_vantage_key)
+                self._fetchers.append(us_stock)
+                logger.debug("成功初始化 USStockFetcher")
+            except Exception as e:
+                logger.warning(f"初始化 USStockFetcher 失败: {e}")
+        
+        if EUStockFetcher is not None:
+            try:
+                eu_stock = EUStockFetcher(alpha_vantage_key=alpha_vantage_key)
+                self._fetchers.append(eu_stock)
+                logger.debug("成功初始化 EUStockFetcher")
+            except Exception as e:
+                logger.warning(f"初始化 EUStockFetcher 失败: {e}")
 
-        # 初始化数据源列表
-        self._fetchers = [
-            efinance,
-            akshare,
-            tushare,
-            baostock,
-            yfinance,
-            us_stock,
-            eu_stock,
-        ]
-
-        # 按优先级排序（Tushare 如果配置了 Token 且初始化成功，优先级为 0）
+        # 按优先级排序
         self._fetchers.sort(key=lambda f: f.priority)
 
-        # 构建优先级说明
-        priority_info = ", ".join([f"{f.name}(P{f.priority})" for f in self._fetchers])
-        logger.info(f"已初始化 {len(self._fetchers)} 个数据源（按优先级）: {priority_info}")
+        if self._fetchers:
+            # 构建优先级说明
+            priority_info = ", ".join([f"{f.name}(P{f.priority})" for f in self._fetchers])
+            logger.info(f"已初始化 {len(self._fetchers)} 个数据源（按优先级）: {priority_info}")
+        else:
+            logger.warning("没有可用的数据源！请安装必要的依赖包。")
     
     def add_fetcher(self, fetcher: BaseFetcher) -> None:
         """添加数据源并重新排序"""

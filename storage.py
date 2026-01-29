@@ -17,26 +17,107 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import (
-    create_engine,
-    Column,
-    String,
-    Float,
-    Date,
-    DateTime,
-    Integer,
-    Index,
-    UniqueConstraint,
-    select,
-    and_,
-    desc,
-)
-from sqlalchemy.orm import (
-    declarative_base,
-    sessionmaker,
-    Session,
-)
-from sqlalchemy.exc import IntegrityError
+
+# 尝试导入SQLAlchemy
+try:
+    from sqlalchemy import (
+        create_engine,
+        Column,
+        String,
+        Float,
+        Date,
+        DateTime,
+        Text,
+        Boolean,
+        Index,
+        func
+    )
+    from sqlalchemy.orm import (
+        sessionmaker,
+        declarative_base
+    )
+    from sqlalchemy.exc import IntegrityError
+    SQLALCHEMY_AVAILABLE = True
+except ImportError:
+    SQLALCHEMY_AVAILABLE = False
+    
+    # 占位符 - 先定义Base
+    class Base:
+        metadata = None
+    
+    def create_engine(*args, **kwargs):
+        return None
+    
+    class Column:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class String:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class Integer:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class Float:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class Date:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class DateTime:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class Text:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class Boolean:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    def Index(*args, **kwargs):
+        pass
+    
+    def func(*args, **kwargs):
+        pass
+    
+    class sessionmaker:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    def declarative_base():
+        return Base
+    
+    class IntegrityError(Exception):
+        pass
+    
+    # 更多占位符
+    class UniqueConstraint:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    def select(*args, **kwargs):
+        return None
+    
+    def and_(*args):
+        return None
+    
+    def desc(*args):
+        return None
+    
+    class Session:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    Base.metadata = None
+    select = None
+    and_ = None
+    desc = None
 
 from config import get_config
 

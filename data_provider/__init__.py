@@ -4,6 +4,9 @@
 数据源策略层 - 包初始化（多市场支持）
 ===================================
 
+import logging
+logger = logging.getLogger(__name__)
+
 本包实现策略模式管理多个数据源，支持全球股市：
 1. 统一的数据获取接口
 2. 自动故障切换
@@ -36,14 +39,54 @@
 - 自动根据股票代码市场智能选择数据源
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
+# 基础模块必须导入
 from .base import BaseFetcher, DataFetcherManager
-from .efinance_fetcher import EfinanceFetcher
-from .akshare_fetcher import AkshareFetcher
-from .tushare_fetcher import TushareFetcher
-from .baostock_fetcher import BaostockFetcher
-from .yfinance_fetcher import YfinanceFetcher
-from .us_stock_fetcher import USStockFetcher
-from .eu_stock_fetcher import EUStockFetcher
+
+# 可选数据源，导入失败时提供占位符
+try:
+    from .efinance_fetcher import EfinanceFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 EfinanceFetcher: {e}")
+    EfinanceFetcher = None
+
+try:
+    from .akshare_fetcher import AkshareFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 AkshareFetcher: {e}")
+    AkshareFetcher = None
+
+try:
+    from .tushare_fetcher import TushareFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 TushareFetcher: {e}")
+    TushareFetcher = None
+
+try:
+    from .baostock_fetcher import BaostockFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 BaostockFetcher: {e}")
+    BaostockFetcher = None
+
+try:
+    from .yfinance_fetcher import YfinanceFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 YfinanceFetcher: {e}")
+    YfinanceFetcher = None
+
+try:
+    from .us_stock_fetcher import USStockFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 USStockFetcher: {e}")
+    USStockFetcher = None
+
+try:
+    from .eu_stock_fetcher import EUStockFetcher
+except ImportError as e:
+    logger.warning(f"无法导入 EUStockFetcher: {e}")
+    EUStockFetcher = None
 
 __all__ = [
     'BaseFetcher',

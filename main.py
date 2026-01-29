@@ -109,11 +109,20 @@ def setup_logging(debug: bool = False, log_dir: str = "./logs") -> None:
     debug_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
     root_logger.addHandler(debug_handler)
     
-    # 降低第三方库的日志级别
+# 降低第三方库的日志级别
     logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
-    logging.getLogger('google').setLevel(logging.WARNING)
-    logging.getLogger('httpx').setLevel(logging.WARNING)
+    try:
+        logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
+    except:
+        pass
+    try:
+        logging.getLogger('google').setLevel(logging.WARNING)
+    except:
+        pass
+    try:
+        logging.getLogger('httpx').setLevel(logging.WARNING)
+    except:
+        pass
     
     logging.info(f"日志系统初始化完成，日志目录: {log_path.absolute()}")
     logging.info(f"常规日志: {log_file}")
