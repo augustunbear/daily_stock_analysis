@@ -91,7 +91,7 @@
 | `BOCHA_API_KEYS` | [博查搜索](https://open.bocha.cn/) Web Search API（中文搜索优化，支持AI摘要，多个key用逗号分隔） | 可选 |
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/) 备用搜索 | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/) Token | 可选 |
-| `ALPHA_VANTAGE_KEY` | [Alpha Vantage](https://www.alphavantage.co/) API Key（美股、欧洲股市备用数据源） | 可选 |
+| `ALPHA_VANTAGE_KEY` | [Alpha Vantage](https://www.alphavantage.com/) API Key（美股、欧洲股市备用数据源） | 可选 |
 
 #### 3. 启用 Actions
 
