@@ -299,14 +299,16 @@ class AkshareFetcher(BaseFetcher):
                 logger.debug(f"补充休眠 {additional_sleep:.2f} 秒")
                 time.sleep(additional_sleep)
         
-        # 执行随机 jitter 休眠
-        self.random_sleep(self.sleep_min, self.sleep_max)
+        # 执行随机 jitter 休眠（增加基础间隔）
+        random_interval = random.uniform(self.sleep_min + 2, self.sleep_max + 3)
+        logger.debug(f"随机休眠 {random_interval:.2f} 秒")
+        time.sleep(random_interval)
         self._last_request_time = time.time()
     
     @retry(
-        stop=stop_after_attempt(3),  # 最多重试3次
-        wait=wait_exponential(multiplier=1, min=2, max=30),  # 指数退避：2, 4, 8... 最大30秒
-        retry=retry_if_exception_type((ConnectionError, TimeoutError)),
+        stop=stop_after_attempt(2),  # 减少重试次数避免被限流
+        wait=wait_exponential(multiplier=1, min=3, max=60),  # 增加基础延时：3, 6, 12... 最大60秒
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, ConnectionResetError, OSError)),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _fetch_raw_data(self, stock_code: str, start_date: str, end_date: str) -> pd.DataFrame:
@@ -601,6 +603,12 @@ class AkshareFetcher(BaseFetcher):
                         api_start = _time.time()
 
                         df = ak.stock_zh_a_spot_em()
+                        
+                        # 检查返回值
+                        if df is None:
+                            raise ValueError("API返回None")
+                        if not isinstance(df, pd.DataFrame):
+                            raise ValueError(f"API返回非DataFrame类型: {type(df)}")
 
                         api_elapsed = _time.time() - api_start
                         logger.info(f"[API返回] ak.stock_zh_a_spot_em 成功: 返回 {len(df)} 只股票, 耗时 {api_elapsed:.2f}s")
@@ -608,7 +616,10 @@ class AkshareFetcher(BaseFetcher):
                     except Exception as e:
                         last_error = e
                         logger.warning(f"[API错误] ak.stock_zh_a_spot_em 获取失败 (attempt {attempt}/2): {e}")
-                        time.sleep(min(2 ** attempt, 5))
+                        # 增加重试间隔
+                        retry_delay = min(3 ** attempt, 10)
+                        logger.info(f"等待 {retry_delay} 秒后重试...")
+                        time.sleep(retry_delay)
 
                 # 更新缓存：成功缓存数据；失败也缓存空数据，避免同一轮任务对同一接口反复请求
                 if df is None:
@@ -619,6 +630,11 @@ class AkshareFetcher(BaseFetcher):
 
             if df is None or df.empty:
                 logger.warning(f"[实时行情] A股实时行情数据为空，跳过 {stock_code}")
+                return None
+            
+            # 特殊处理：对于非A股代码（如MSFT），直接跳过
+            if not stock_code.isdigit() or len(stock_code) != 6:
+                logger.warning(f"[实时行情] {stock_code} 不是A股代码格式，跳过实时行情获取")
                 return None
             
             # 查找指定股票
@@ -862,6 +878,11 @@ class AkshareFetcher(BaseFetcher):
             logger.debug(f"[API跳过] {stock_code} 是 ETF/指数，无筹码分布数据")
             return None
         
+        # 特殊处理：对于非A股代码（如MSFT），直接跳过
+        if not stock_code.isdigit() or len(stock_code) != 6:
+            logger.warning(f"[API跳过] {stock_code} 不是A股代码格式，无筹码分布数据")
+            return None
+        
         try:
             # 防封禁策略
             self._set_random_user_agent()
@@ -875,6 +896,13 @@ class AkshareFetcher(BaseFetcher):
             
             api_elapsed = _time.time() - api_start
             
+            # 检查返回值
+            if df is None:
+                logger.warning(f"[API返回] ak.stock_cyq_em 返回None, 耗时 {api_elapsed:.2f}s")
+                return None
+            if not isinstance(df, pd.DataFrame):
+                logger.warning(f"[API返回] ak.stock_cyq_em 返回非DataFrame类型: {type(df)}, 耗时 {api_elapsed:.2f}s")
+                return None
             if df.empty:
                 logger.warning(f"[API返回] ak.stock_cyq_em 返回空数据, 耗时 {api_elapsed:.2f}s")
                 return None
