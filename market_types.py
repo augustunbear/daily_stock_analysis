@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Optional, Dict, Any, List
 import re
 import logging
-import datetime
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -307,11 +307,15 @@ def is_market_trading_hours(market: Market, current_time: Optional[datetime] = N
         current_time = datetime.now()
     
     # 如果没有pytz，使用本地时间
-    if pytz:
-        # 将时间转换为目标市场时区
-        market_tz = pytz.timezone(market.get_timezone())
-        local_time = current_time.astimezone(market_tz)
-    else:
+    try:
+        import pytz
+        if pytz:
+            # 将时间转换为目标市场时区
+            market_tz = pytz.timezone(market.get_timezone())
+            local_time = current_time.astimezone(market_tz)
+        else:
+            local_time = current_time
+    except ImportError:
         local_time = current_time
     
     # 检查是否为工作日

@@ -32,6 +32,8 @@ import requests
 from config import get_config
 from analyzer import AnalysisResult
 from bot.models import BotMessage
+from currency_converter import get_currency_converter
+from market_types import Market
 
 logger = logging.getLogger(__name__)
 

@@ -26,6 +26,7 @@ from tenacity import (
 
 from config import get_config
 from market_types import Market
+from currency_converter import get_currency_converter
 
 logger = logging.getLogger(__name__)
 
@@ -839,9 +840,28 @@ class GeminiAnalyzer:
             news_context: 预先搜索的新闻内容
         """
         code = context.get('code', 'Unknown')
-        currency_units = self._get_currency_units(code)
+        
+        # 获取货币转换器并确定显示货币
+        converter = get_currency_converter()
+        market = Market.from_stock_code(code)
+        target_currency = converter.get_target_currency(market.value)
+        
+        # 根据目标货币设置显示单位
+        currency_unit_map = {
+            "CNY": {"price": "元", "ten_thousand": "万元", "hundred_million": "亿元"},
+            "HKD": {"price": "港元", "ten_thousand": "万港元", "hundred_million": "亿港元"},
+            "USD": {"price": "美元", "ten_thousand": "万美元", "hundred_million": "亿美元"},
+            "EUR": {"price": "欧元", "ten_thousand": "万欧元", "hundred_million": "亿欧元"},
+            "GBP": {"price": "英镑", "ten_thousand": "万英镑", "hundred_million": "亿英镑"},
+            "CHF": {"price": "瑞郎", "ten_thousand": "万瑞郎", "hundred_million": "亿瑞郎"},
+        }
+        currency_units = currency_unit_map.get(target_currency, {
+            "price": target_currency,
+            "ten_thousand": f"万{target_currency}",
+            "hundred_million": f"亿{target_currency}",
+        })
         price_unit = currency_units["price"]
-        currency_code = currency_units["code"]
+        currency_code = target_currency
         
         # 优先使用上下文中的股票名称（从 realtime_quote 获取）
         stock_name = context.get('stock_name', name)
@@ -849,6 +869,27 @@ class GeminiAnalyzer:
             stock_name = STOCK_NAME_MAP.get(code, f'股票{code}')
             
         today = context.get('today', {})
+        
+        # 获取原始数据并转换货币
+        converter = get_currency_converter()
+        original_currency = market.get_currency()
+        
+        # 转换今日行情数据
+        converted_today = {}
+        for field in ['close', 'open', 'high', 'low', 'amount']:
+            if field in today and today[field] is not None:
+                if field == 'amount':
+                    converted_amount, _ = converter.convert_amount(
+                        float(today[field]), original_currency, target_currency
+                    )
+                    converted_today[field] = converted_amount
+                else:
+                    converted_price, _ = converter.convert_amount(
+                        float(today[field]), original_currency, target_currency
+                    )
+                    converted_today[field] = converted_price
+            else:
+                converted_today[field] = today.get(field)
         
         # ========== 构建决策仪表盘格式的输入 ==========
         prompt = f"""# 决策仪表盘分析请求
@@ -859,6 +900,7 @@ class GeminiAnalyzer:
 | 股票代码 | **{code}** |
 | 股票名称 | **{stock_name}** |
 | 分析日期 | {context.get('date', '未知')} |
+| 显示货币 | **{target_currency}** (原数据: {original_currency}) |
 
 ---
 
@@ -867,13 +909,13 @@ class GeminiAnalyzer:
 ### 今日行情
 | 指标 | 数值 |
 |------|------|
-| 收盘价 | {today.get('close', 'N/A')} {price_unit} |
-| 开盘价 | {today.get('open', 'N/A')} {price_unit} |
-| 最高价 | {today.get('high', 'N/A')} {price_unit} |
-| 最低价 | {today.get('low', 'N/A')} {price_unit} |
+| 收盘价 | {converted_today.get('close', 'N/A')} {price_unit} |
+| 开盘价 | {converted_today.get('open', 'N/A')} {price_unit} |
+| 最高价 | {converted_today.get('high', 'N/A')} {price_unit} |
+| 最低价 | {converted_today.get('low', 'N/A')} {price_unit} |
 | 涨跌幅 | {today.get('pct_chg', 'N/A')}% |
 | 成交量 | {self._format_volume(today.get('volume'))} |
-| 成交额 | {self._format_amount(today.get('amount'), currency_code)} |
+| 成交额 | {self._format_amount(converted_today.get('amount'), target_currency)} |
 
 ### 均线系统（关键判断指标）
 | 均线 | 数值 | 说明 |
@@ -887,17 +929,29 @@ class GeminiAnalyzer:
         # 添加实时行情数据（量比、换手率等）
         if 'realtime' in context:
             rt = context['realtime']
+            
+            # 转换实时行情的货币相关字段
+            converted_rt = {}
+            for field in ['price', 'total_mv', 'circ_mv']:
+                if field in rt and rt[field] is not None:
+                    converted_value, _ = converter.convert_amount(
+                        float(rt[field]), original_currency, target_currency
+                    )
+                    converted_rt[field] = converted_value
+                else:
+                    converted_rt[field] = rt.get(field)
+            
             prompt += f"""
 ### 实时行情增强数据
 | 指标 | 数值 | 解读 |
 |------|------|------|
-| 当前价格 | {rt.get('price', 'N/A')} {price_unit} | |
+| 当前价格 | {converted_rt.get('price', 'N/A')} {price_unit} | |
 | **量比** | **{rt.get('volume_ratio', 'N/A')}** | {rt.get('volume_ratio_desc', '')} |
 | **换手率** | **{rt.get('turnover_rate', 'N/A')}%** | |
 | 市盈率(动态) | {rt.get('pe_ratio', 'N/A')} | |
 | 市净率 | {rt.get('pb_ratio', 'N/A')} | |
-| 总市值 | {self._format_amount(rt.get('total_mv'), currency_code)} | |
-| 流通市值 | {self._format_amount(rt.get('circ_mv'), currency_code)} | |
+| 总市值 | {self._format_amount(converted_rt.get('total_mv'), target_currency)} | |
+| 流通市值 | {self._format_amount(converted_rt.get('circ_mv'), target_currency)} | |
 | 60日涨跌幅 | {rt.get('change_60d', 'N/A')}% | 中期表现 |
 """
         
@@ -905,12 +959,23 @@ class GeminiAnalyzer:
         if 'chip' in context:
             chip = context['chip']
             profit_ratio = chip.get('profit_ratio', 0)
+            
+            # 转换筹码平均成本
+            avg_cost = chip.get('avg_cost')
+            if avg_cost is not None:
+                converted_cost, _ = converter.convert_amount(
+                    float(avg_cost), original_currency, target_currency
+                )
+                avg_cost_display = f"{converted_cost:.2f}"
+            else:
+                avg_cost_display = "N/A"
+            
             prompt += f"""
 ### 筹码分布数据（效率指标）
 | 指标 | 数值 | 健康标准 |
 |------|------|----------|
 | **获利比例** | **{profit_ratio:.1%}** | 70-90%时警惕 |
-| 平均成本 | {chip.get('avg_cost', 'N/A')} {price_unit} | 现价应高于5-15% |
+| 平均成本 | {avg_cost_display} {price_unit} | 现价应高于5-15% |
 | 90%筹码集中度 | {chip.get('concentration_90', 0):.2%} | <15%为集中 |
 | 70%筹码集中度 | {chip.get('concentration_70', 0):.2%} | |
 | 筹码状态 | {chip.get('chip_status', '未知')} | |
@@ -1009,22 +1074,13 @@ class GeminiAnalyzer:
             return f"{volume:.0f} 股"
     
     def _format_amount(self, amount: Optional[float], currency_code: str = "CNY") -> str:
-        """格式化成交额显示"""
+        """格式化成交额显示（使用货币转换器）"""
         if amount is None:
             return 'N/A'
-        units = _CURRENCY_UNITS.get(currency_code)
-        if not units:
-            units = {
-                "price": currency_code,
-                "ten_thousand": f"万{currency_code}",
-                "hundred_million": f"亿{currency_code}",
-            }
-        if amount >= 1e8:
-            return f"{amount / 1e8:.2f} {units['hundred_million']}"
-        elif amount >= 1e4:
-            return f"{amount / 1e4:.2f} {units['ten_thousand']}"
-        else:
-            return f"{amount:.0f} {units['price']}"
+        
+        # 获取货币转换器
+        converter = get_currency_converter()
+        return converter._format_currency(amount, currency_code)
 
     def _get_currency_units(self, stock_code: str) -> Dict[str, str]:
         market = Market.from_stock_code(stock_code)
