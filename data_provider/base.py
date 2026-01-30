@@ -293,12 +293,12 @@ class DataFetcherManager:
           4. YfinanceFetcher (Priority 4)
         """
         from . import EfinanceFetcher, AkshareFetcher, TushareFetcher, BaostockFetcher, YfinanceFetcher, USStockFetcher, EUStockFetcher
-try:
-    from .mock_fetcher import MockFetcher
-except ImportError:
-    MockFetcher = None
+        try:
+            from .mock_fetcher import MockFetcher
+        except ImportError:
+            MockFetcher = None
 
-from config import get_config
+        from config import get_config
 
         config = get_config()
 
