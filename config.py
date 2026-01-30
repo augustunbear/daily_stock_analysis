@@ -16,6 +16,8 @@ from typing import List, Optional
 from dotenv import load_dotenv, dotenv_values
 from dataclasses import dataclass, field
 
+from market_types import resolve_stock_alias
+
 
 @dataclass
 class Config:
@@ -193,11 +195,13 @@ class Config:
         
         # 解析自选股列表（逗号分隔）
         stock_list_str = os.getenv('STOCK_LIST', '')
-        stock_list = [
-            code.strip() 
-            for code in stock_list_str.split(',') 
-            if code.strip()
-        ]
+        stock_list = []
+        for code in stock_list_str.split(','):
+            raw = code.strip()
+            if not raw:
+                continue
+            resolved = resolve_stock_alias(raw)
+            stock_list.append(resolved or raw)
         
         # 如果没有配置，使用默认的示例股票
         if not stock_list:
@@ -306,11 +310,13 @@ feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
         if not stock_list_str:
             stock_list_str = os.getenv('STOCK_LIST', '')
 
-        stock_list = [
-            code.strip()
-            for code in stock_list_str.split(',')
-            if code.strip()
-        ]
+        stock_list = []
+        for code in stock_list_str.split(','):
+            raw = code.strip()
+            if not raw:
+                continue
+            resolved = resolve_stock_alias(raw)
+            stock_list.append(resolved or raw)
 
         if not stock_list:        
             stock_list = ['000001']

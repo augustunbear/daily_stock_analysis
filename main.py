@@ -69,6 +69,7 @@ from search_service import SearchService, SearchResponse
 from enums import ReportType
 from stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from market_analyzer import MarketAnalyzer
+from market_types import resolve_stock_alias
 
 # 配置日志格式
 LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s'
@@ -987,7 +988,13 @@ def main() -> int:
     # 解析股票列表
     stock_codes = None
     if args.stocks:
-        stock_codes = [code.strip() for code in args.stocks.split(',') if code.strip()]
+        stock_codes = []
+        for code in args.stocks.split(','):
+            raw = code.strip()
+            if not raw:
+                continue
+            resolved = resolve_stock_alias(raw)
+            stock_codes.append(resolved or raw)
         logger.info(f"使用命令行指定的股票列表: {stock_codes}")
     
     # === 启动 WebUI (如果启用) ===

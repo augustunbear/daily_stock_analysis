@@ -21,6 +21,7 @@ from typing import Optional, Dict, Any, List, Union
 
 from enums import ReportType
 from bot.models import BotMessage
+from market_types import resolve_stock_alias
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,11 @@ class ConfigService:
         """规范化股票列表格式"""
         parts = [p.strip() for p in value.replace("\n", ",").split(",")]
         parts = [p for p in parts if p]
-        return ",".join(parts)
+        normalized = []
+        for item in parts:
+            resolved = resolve_stock_alias(item)
+            normalized.append(resolved or item)
+        return ",".join(normalized)
     
     def _update_stock_list(self, env_text: str, new_value: str) -> str:
         """更新环境文件中的 STOCK_LIST"""

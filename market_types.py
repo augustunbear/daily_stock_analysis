@@ -16,6 +16,86 @@ import datetime
 logger = logging.getLogger(__name__)
 
 
+_COMMON_STOCK_ALIASES: Dict[str, str] = {
+    # US stocks (common company names)
+    "microsoft": "MSFT",
+    "ms": "MSFT",
+    "apple": "AAPL",
+    "google": "GOOGL",
+    "alphabet": "GOOGL",
+    "amazon": "AMZN",
+    "tesla": "TSLA",
+    "nvidia": "NVDA",
+    "meta": "META",
+    "facebook": "META",
+    "netflix": "NFLX",
+    "berkshirehathaway": "BRK.B",
+    "berkshire": "BRK.B",
+    "brkb": "BRK.B",
+    # Chinese company names (common A-share examples)
+    "贵州茅台": "600519",
+    "平安银行": "000001",
+    "宁德时代": "300750",
+    "比亚迪": "002594",
+    "招商银行": "600036",
+    "中国平安": "601318",
+    "五粮液": "000858",
+    "恒瑞医药": "600276",
+    "隆基绿能": "601012",
+    "立讯精密": "002475",
+    "东方财富": "300059",
+    "海康威视": "002415",
+    "长江电力": "600900",
+    "兴业银行": "601166",
+    "中国石化": "600028",
+    # Chinese aliases for US stocks
+    "微软": "MSFT",
+    "微软公司": "MSFT",
+    "苹果": "AAPL",
+    "苹果公司": "AAPL",
+    "谷歌": "GOOGL",
+    "亚马逊": "AMZN",
+    "特斯拉": "TSLA",
+    "英伟达": "NVDA",
+    "脸书": "META",
+    "奈飞": "NFLX",
+    "伯克希尔": "BRK.B",
+}
+
+
+def _alias_key(value: str) -> str:
+    cleaned = value.strip().lower()
+    cleaned = re.sub(r"[\s\-_.(),&'\"`]+", "", cleaned)
+    return cleaned
+
+
+def _looks_like_stock_code(value: str) -> bool:
+    code = value.strip()
+    if not code:
+        return False
+    if re.match(r"^\d{4,6}(\.[A-Za-z]{1,5})?$", code):
+        return True
+    if re.match(r"^[A-Za-z]{1,5}(\.[A-Za-z]{1,5})?$", code):
+        return True
+    return False
+
+
+def resolve_stock_alias(stock_input: str) -> Optional[str]:
+    """
+    根据公司名称或常见别名解析为股票代码（若无匹配则返回 None）
+    """
+    if not stock_input:
+        return None
+    raw = stock_input.strip()
+    if _looks_like_stock_code(raw):
+        return None
+    key = _alias_key(raw)
+    alias = _COMMON_STOCK_ALIASES.get(key) or _COMMON_STOCK_ALIASES.get(raw.strip())
+    if alias:
+        logger.info(f"股票名称别名解析: {stock_input} -> {alias}")
+    return alias
+
+
 class Market(Enum):
     """股票市场枚举"""
     
