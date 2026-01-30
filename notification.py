@@ -1659,6 +1659,249 @@ class NotificationService:
 
         return "\n".join(lines).strip()
     
+    def send_single_stock_email(self, result: AnalysisResult) -> bool:
+        """
+        发送单只股票的分析邮件
+        
+        邮件标题格式：[公司名称][简短结论] 评分XX分 股票代码
+        
+        Args:
+            result: 单只股票的分析结果
+            
+        Returns:
+            是否发送成功
+        """
+        if not self._is_email_configured():
+            logger.warning("邮件配置不完整，跳过单股邮件推送")
+            return False
+        
+        try:
+            # 生成优化的邮件标题
+            email_subject = self._generate_single_stock_subject(result)
+            
+            # 生成单股报告内容
+            email_content = self.generate_single_stock_email_content(result)
+            
+            # 发送邮件
+            success = self.send_to_email(email_content, email_subject)
+            
+            if success:
+                logger.info(f"单股邮件发送成功: {result.name}({result.code})")
+            else:
+                logger.error(f"单股邮件发送失败: {result.name}({result.code})")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"发送单股邮件异常: {e}")
+            return False
+    
+    def _generate_single_stock_subject(self, result: AnalysisResult) -> str:
+        """
+        生成单股邮件的优化标题
+        
+        格式：[公司名称][简短结论] 评分XX分 股票代码
+        
+        Args:
+            result: 分析结果
+            
+        Returns:
+            优化后的邮件标题
+        """
+        # 获取操作建议的简短表达
+        advice_mapping = {
+            '强烈买入': '强烈买入',
+            '买入': '买入',
+            '加仓': '加仓',
+            '持有': '持有',
+            '观望': '观望',
+            '减仓': '减仓',
+            '卖出': '卖出',
+            '强烈卖出': '强烈卖出'
+        }
+        
+        short_advice = advice_mapping.get(result.operation_advice, result.operation_advice)
+        
+        # 获取核心结论作为简短结论（如果有的话）
+        short_conclusion = ""
+        if result.get_core_conclusion() and result.get_core_conclusion() != result.operation_advice:
+            # 提取核心结论的前30个字符
+            core_conclusion = result.get_core_conclusion()
+            if len(core_conclusion) > 30:
+                short_conclusion = core_conclusion[:30] + "..."
+            else:
+                short_conclusion = core_conclusion
+            short_conclusion = f" {short_conclusion}"
+        
+        # 组合标题：[公司名称][简短结论] 评分XX分 股票代码
+        stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+        
+        subject = f"[{stock_name}][{short_advice}]{short_conclusion} 评分{result.sentiment_score}分 {result.code}"
+        
+        # 如果标题过长，截断核心结论部分
+        if len(subject) > 80:  # 邮件标题长度限制
+            # 优先保留公司名称、操作建议、评分、代码
+            subject = f"[{stock_name}][{short_advice}] 评分{result.sentiment_score}分 {result.code}"
+        
+        return subject
+    
+    def generate_single_stock_email_content(self, result: AnalysisResult) -> str:
+        """
+        生成专门用于邮件的单股分析内容
+        
+        包含详细的分析信息，格式化为适合邮件阅读的样式
+        
+        Args:
+            result: 分析结果
+            
+        Returns:
+            Markdown 格式的邮件内容
+        """
+        from currency_converter import get_currency_converter
+        from market_types import Market
+        
+        # 获取货币信息用于显示
+        converter = get_currency_converter()
+        market = Market.from_stock_code(result.code)
+        target_currency = converter.get_target_currency(market.value)
+        currency_symbol = {"CNY": "¥", "EUR": "€", "USD": "$", "GBP": "£", "HKD": "HK$", "CHF": "CHF"}.get(target_currency, target_currency)
+        
+        # 邮件标题
+        signal_emoji = result.get_emoji()
+        stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+        
+        content = f"""# {signal_emoji} {stock_name} ({result.code}) 股票分析报告
+
+> **分析时间**：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
+> **综合评分**：{result.sentiment_score}/100 分  
+> **操作建议**：{result.operation_advice}  
+> **趋势预测**：{result.trend_prediction}  
+> **置信度**：{result.confidence_level}
+
+---
+
+## 📌 核心结论
+
+{self._format_core_conclusion(result)}
+
+---
+
+## 🎯 操作建议详情
+
+| 持仓情况 | 建议操作 | 说明 |
+|---------|---------|------|
+| 🆕 **空仓者** | {result.get_position_advice(has_position=False)} | 首次建仓建议 |
+| 💼 **持仓者** | {result.get_position_advice(has_position=True)} | 已有仓位建议 |
+
+---
+
+## 📍 关键点位
+
+{self._format_sniper_points(result)}
+
+---
+
+## 📊 风险评估
+
+{self._format_risk_assessment(result)}
+
+---
+
+## 📈 技术面分析
+
+### 走势分析
+{result.trend_analysis if result.trend_analysis else '暂无分析'}
+
+### 均线系统
+{result.ma_analysis if result.ma_analysis else '暂无分析'}
+
+### 量能分析  
+{result.volume_analysis if result.volume_analysis else '暂无分析'}
+
+---
+
+## 🏢 基本面分析
+
+{result.fundamental_analysis if result.fundamental_analysis else '暂无分析'}
+
+---
+
+## 📰 消息面分析
+
+{result.news_summary if result.news_summary else '暂无最新消息'}
+
+---
+
+## ⚠️ 风险提示
+
+{result.risk_warning if result.risk_warning else '暂无特别风险提示'}
+
+---
+
+## 📝 分析摘要
+
+{result.analysis_summary if result.analysis_summary else '暂无摘要'}
+
+---
+
+*本报告由 AI 生成，仅供参考，不构成投资建议。投资有风险，入市需谨慎。*
+*数据来源：{result.data_sources if result.data_sources else '公开数据'}*
+"""
+        
+        return content
+    
+    def _format_core_conclusion(self, result: AnalysisResult) -> str:
+        """格式化核心结论"""
+        core_conclusion = result.get_core_conclusion()
+        if core_conclusion:
+            return f"**{core_conclusion}**"
+        else:
+            return f"建议**{result.operation_advice}**，评分**{result.sentiment_score}**分"
+    
+    def _format_sniper_points(self, result: AnalysisResult) -> str:
+        """格式化狙击点位"""
+        sniper_points = result.get_sniper_points()
+        if sniper_points:
+            lines = []
+            for point_type, price in sniper_points.items():
+                if price and price != '-':
+                    point_name = {
+                        'ideal_buy': '🎯 理想买入点',
+                        'secondary_buy': '🔵 次优买入点', 
+                        'stop_loss': '🛑 止损位',
+                        'take_profit': '🎊 目标位'
+                    }.get(point_type, point_type)
+                    lines.append(f"- **{point_name}**: {price}")
+            
+            if lines:
+                return '\n'.join(lines)
+        
+        return "暂无具体点位建议"
+    
+    def _format_risk_assessment(self, result: AnalysisResult) -> str:
+        """格式化风险评估"""
+        risk_alerts = result.get_risk_alerts()
+        checklist = result.get_checklist()
+        
+        if risk_alerts or checklist:
+            lines = []
+            
+            # 风险警报
+            if risk_alerts:
+                lines.append("**🚨 风险警报**:")
+                for alert in risk_alerts[:3]:  # 最多显示3条
+                    lines.append(f"- {alert}")
+            
+            # 检查清单
+            if checklist:
+                lines.append("\n**✅ 检查清单**:")
+                for check in checklist:
+                    lines.append(f"- {check}")
+            
+            return '\n'.join(lines)
+        
+        return "暂无特别风险提示"
+
     def send_to_email(self, content: str, subject: Optional[str] = None) -> bool:
         """
         通过 SMTP 发送邮件（自动识别 SMTP 服务器）

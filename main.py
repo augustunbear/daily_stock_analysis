@@ -458,6 +458,7 @@ class StockAnalysisPipeline:
         code: str, 
         skip_analysis: bool = False,
         single_stock_notify: bool = False,
+        single_stock_email: bool = False,
         report_type: ReportType = ReportType.SIMPLE
     ) -> Optional[AnalysisResult]:
         """
@@ -522,6 +523,16 @@ class StockAnalysisPipeline:
                             logger.warning(f"[{code}] 单股推送失败")
                     except Exception as e:
                         logger.error(f"[{code}] 单股推送异常: {e}")
+                
+                # 单股邮件发送：每分析完一只股票立即发送邮件
+                if single_stock_email:
+                    try:
+                        if self.notifier.send_single_stock_email(result):
+                            logger.info(f"[{code}] 单股邮件发送成功")
+                        else:
+                            logger.warning(f"[{code}] 单股邮件发送失败")
+                    except Exception as e:
+                        logger.error(f"[{code}] 单股邮件发送异常: {e}")
             
             return result
             
@@ -584,7 +595,8 @@ class StockAnalysisPipeline:
                     self.process_single_stock, 
                     code, 
                     skip_analysis=dry_run,
-                    single_stock_notify=single_stock_notify and send_notification
+                    single_stock_notify=single_stock_notify and send_notification,
+                    single_stock_email=getattr(self.config, 'single_stock_email', False) and send_notification
                 ): code
                 for code in stock_codes
             }
@@ -745,6 +757,12 @@ def parse_arguments() -> argparse.Namespace:
     )
     
     parser.add_argument(
+        '--single-email',
+        action='store_true',
+        help='启用单股邮件模式：每分析完一只股票立即发送邮件'
+    )
+    
+    parser.add_argument(
         '--workers',
         type=int,
         default=None,
@@ -850,6 +868,10 @@ def run_full_analysis(
         # 命令行参数 --single-notify 覆盖配置（#55）
         if getattr(args, 'single_notify', False):
             config.single_stock_notify = True
+        
+        # 命令行参数 --single-email 覆盖配置
+        if getattr(args, 'single_email', False):
+            config.single_stock_email = True
         
         # 创建调度器
         pipeline = StockAnalysisPipeline(
