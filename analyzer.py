@@ -25,8 +25,19 @@ from tenacity import (
 )
 
 from config import get_config
+from market_types import Market
 
 logger = logging.getLogger(__name__)
+
+
+_CURRENCY_UNITS = {
+    "CNY": {"price": "元", "ten_thousand": "万元", "hundred_million": "亿元"},
+    "HKD": {"price": "港元", "ten_thousand": "万港元", "hundred_million": "亿港元"},
+    "USD": {"price": "美元", "ten_thousand": "万美元", "hundred_million": "亿美元"},
+    "EUR": {"price": "欧元", "ten_thousand": "万欧元", "hundred_million": "亿欧元"},
+    "GBP": {"price": "英镑", "ten_thousand": "万英镑", "hundred_million": "亿英镑"},
+    "CHF": {"price": "瑞郎", "ten_thousand": "万瑞郎", "hundred_million": "亿瑞郎"},
+}
 
 
 # 股票名称映射（常见股票）
@@ -828,6 +839,9 @@ class GeminiAnalyzer:
             news_context: 预先搜索的新闻内容
         """
         code = context.get('code', 'Unknown')
+        currency_units = self._get_currency_units(code)
+        price_unit = currency_units["price"]
+        currency_code = currency_units["code"]
         
         # 优先使用上下文中的股票名称（从 realtime_quote 获取）
         stock_name = context.get('stock_name', name)
@@ -853,13 +867,13 @@ class GeminiAnalyzer:
 ### 今日行情
 | 指标 | 数值 |
 |------|------|
-| 收盘价 | {today.get('close', 'N/A')} 元 |
-| 开盘价 | {today.get('open', 'N/A')} 元 |
-| 最高价 | {today.get('high', 'N/A')} 元 |
-| 最低价 | {today.get('low', 'N/A')} 元 |
+| 收盘价 | {today.get('close', 'N/A')} {price_unit} |
+| 开盘价 | {today.get('open', 'N/A')} {price_unit} |
+| 最高价 | {today.get('high', 'N/A')} {price_unit} |
+| 最低价 | {today.get('low', 'N/A')} {price_unit} |
 | 涨跌幅 | {today.get('pct_chg', 'N/A')}% |
 | 成交量 | {self._format_volume(today.get('volume'))} |
-| 成交额 | {self._format_amount(today.get('amount'))} |
+| 成交额 | {self._format_amount(today.get('amount'), currency_code)} |
 
 ### 均线系统（关键判断指标）
 | 均线 | 数值 | 说明 |
@@ -877,13 +891,13 @@ class GeminiAnalyzer:
 ### 实时行情增强数据
 | 指标 | 数值 | 解读 |
 |------|------|------|
-| 当前价格 | {rt.get('price', 'N/A')} 元 | |
+| 当前价格 | {rt.get('price', 'N/A')} {price_unit} | |
 | **量比** | **{rt.get('volume_ratio', 'N/A')}** | {rt.get('volume_ratio_desc', '')} |
 | **换手率** | **{rt.get('turnover_rate', 'N/A')}%** | |
 | 市盈率(动态) | {rt.get('pe_ratio', 'N/A')} | |
 | 市净率 | {rt.get('pb_ratio', 'N/A')} | |
-| 总市值 | {self._format_amount(rt.get('total_mv'))} | |
-| 流通市值 | {self._format_amount(rt.get('circ_mv'))} | |
+| 总市值 | {self._format_amount(rt.get('total_mv'), currency_code)} | |
+| 流通市值 | {self._format_amount(rt.get('circ_mv'), currency_code)} | |
 | 60日涨跌幅 | {rt.get('change_60d', 'N/A')}% | 中期表现 |
 """
         
@@ -896,7 +910,7 @@ class GeminiAnalyzer:
 | 指标 | 数值 | 健康标准 |
 |------|------|----------|
 | **获利比例** | **{profit_ratio:.1%}** | 70-90%时警惕 |
-| 平均成本 | {chip.get('avg_cost', 'N/A')} 元 | 现价应高于5-15% |
+| 平均成本 | {chip.get('avg_cost', 'N/A')} {price_unit} | 现价应高于5-15% |
 | 90%筹码集中度 | {chip.get('concentration_90', 0):.2%} | <15%为集中 |
 | 70%筹码集中度 | {chip.get('concentration_70', 0):.2%} | |
 | 筹码状态 | {chip.get('chip_status', '未知')} | |
@@ -994,16 +1008,40 @@ class GeminiAnalyzer:
         else:
             return f"{volume:.0f} 股"
     
-    def _format_amount(self, amount: Optional[float]) -> str:
+    def _format_amount(self, amount: Optional[float], currency_code: str = "CNY") -> str:
         """格式化成交额显示"""
         if amount is None:
             return 'N/A'
+        units = _CURRENCY_UNITS.get(currency_code)
+        if not units:
+            units = {
+                "price": currency_code,
+                "ten_thousand": f"万{currency_code}",
+                "hundred_million": f"亿{currency_code}",
+            }
         if amount >= 1e8:
-            return f"{amount / 1e8:.2f} 亿元"
+            return f"{amount / 1e8:.2f} {units['hundred_million']}"
         elif amount >= 1e4:
-            return f"{amount / 1e4:.2f} 万元"
+            return f"{amount / 1e4:.2f} {units['ten_thousand']}"
         else:
-            return f"{amount:.0f} 元"
+            return f"{amount:.0f} {units['price']}"
+
+    def _get_currency_units(self, stock_code: str) -> Dict[str, str]:
+        market = Market.from_stock_code(stock_code)
+        currency_code = market.get_currency()
+        units = _CURRENCY_UNITS.get(currency_code)
+        if not units:
+            units = {
+                "price": currency_code,
+                "ten_thousand": f"万{currency_code}",
+                "hundred_million": f"亿{currency_code}",
+            }
+        return {
+            "code": currency_code,
+            "price": units["price"],
+            "ten_thousand": units["ten_thousand"],
+            "hundred_million": units["hundred_million"],
+        }
     
     def _parse_response(
         self, 
