@@ -39,7 +39,8 @@ try:
     )
     from sqlalchemy.orm import (
         sessionmaker,
-        declarative_base
+        declarative_base,
+        Session
     )
     from sqlalchemy.exc import IntegrityError
     SQLALCHEMY_AVAILABLE = True
