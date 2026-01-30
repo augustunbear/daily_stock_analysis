@@ -24,13 +24,18 @@ try:
         create_engine,
         Column,
         String,
+        Integer,
         Float,
         Date,
         DateTime,
         Text,
         Boolean,
         Index,
-        func
+        UniqueConstraint,
+        func,
+        select,
+        and_,
+        desc
     )
     from sqlalchemy.orm import (
         sessionmaker,
