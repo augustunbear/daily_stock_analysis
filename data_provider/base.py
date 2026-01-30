@@ -293,7 +293,12 @@ class DataFetcherManager:
           4. YfinanceFetcher (Priority 4)
         """
         from . import EfinanceFetcher, AkshareFetcher, TushareFetcher, BaostockFetcher, YfinanceFetcher, USStockFetcher, EUStockFetcher
-        from config import get_config
+try:
+    from .mock_fetcher import MockFetcher
+except ImportError:
+    MockFetcher = None
+
+from config import get_config
 
         config = get_config()
 
@@ -345,7 +350,18 @@ class DataFetcherManager:
             priority_info = ", ".join([f"{f.name}(P{f.priority})" for f in self._fetchers])
             logger.info(f"已初始化 {len(self._fetchers)} 个数据源（按优先级）: {priority_info}")
         else:
-            logger.warning("没有可用的数据源！请安装必要的依赖包。")
+            logger.warning("没有可用的真实数据源，使用模拟数据源进行测试...")
+            
+            # 添加模拟数据源
+            if MockFetcher is not None:
+                try:
+                    mock_fetcher = MockFetcher()
+                    self._fetchers.append(mock_fetcher)
+                    logger.info("已添加模拟数据源用于测试")
+                except Exception as e:
+                    logger.error(f"添加模拟数据源失败: {e}")
+            else:
+                logger.error("无法导入模拟数据源")
     
     def add_fetcher(self, fetcher: BaseFetcher) -> None:
         """添加数据源并重新排序"""

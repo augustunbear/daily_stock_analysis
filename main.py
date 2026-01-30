@@ -43,7 +43,19 @@ from feishu_doc import FeishuDocManager
 
 from config import get_config, Config
 from storage import get_db, DatabaseManager
-from data_provider import DataFetcherManager
+try:
+    from data_provider import DataFetcherManager
+    REAL_DATA_PROVIDER = True
+except ImportError:
+    # 如果真实数据源导入失败，使用简化版本
+    try:
+        from data_provider.simple_manager import DataFetcherManager
+        REAL_DATA_PROVIDER = False
+        print("注意：使用模拟数据源，数据为测试用途")
+    except ImportError:
+        print("无法导入任何数据源")
+        DataFetcherManager = None
+        REAL_DATA_PROVIDER = False
 try:
     from data_provider.akshare_fetcher import AkshareFetcher, RealtimeQuote, ChipDistribution
 except ImportError:

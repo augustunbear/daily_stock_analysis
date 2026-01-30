@@ -1,47 +1,72 @@
 # -*- coding: utf-8 -*-
 """
-简单数据源 - 用于测试
+内置模拟数据源 - 当没有真实数据源时使用
 """
 
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import logging
 
-class SimpleFetcher:
-    """简单测试数据源"""
+logger = logging.getLogger(__name__)
+
+class MockFetcher:
+    """模拟数据源"""
     
-    name = "SimpleFetcher"
-    priority = 999  # 最低优先级，只在无其他数据源时使用
-    """简单测试数据源"""
-    
-    name = "SimpleFetcher"
-    priority = 1
+    name = "MockFetcher"
+    priority = 999  # 最低优先级
     
     def get_daily_data(self, stock_code, start_date=None, end_date=None, days=30):
-        """生成测试数据"""
+        """生成模拟数据"""
         
-        # 如果没有指定日期范围，使用默认值
+        logger.info(f"[MockFetcher] 生成 {stock_code} 的模拟数据")
+        
+        # 处理日期范围
         if end_date is None:
             end_date = datetime.now()
         else:
             end_date = pd.to_datetime(end_date)
         
         if start_date is None:
-            start_date = end_date - timedelta(days=days)
+            start_date = end_date - timedelta(days=days*2)  # 多取一些，确保有足够的交易日
         else:
             start_date = pd.to_datetime(start_date)
         
         # 生成日期序列（只包含工作日）
         dates = pd.bdate_range(start=start_date, end=end_date)
         
+        # 取最后N天
+        dates = dates[-min(len(dates), days):]
+        
         # 生成模拟价格数据
         np.random.seed(hash(stock_code) % 2**32)  # 确保每个股票的数据一致
         
-        base_price = 100.0
+        # 根据股票类型设置基础价格
         if stock_code.startswith(('600', '000', '300', '688')):  # A股
-            base_price = np.random.uniform(10, 500)  # A股价格范围
+            stock_names = {
+                '600519': '贵州茅台',
+                '000001': '平安银行',
+                '300750': '宁德时代',
+                '002594': '比亚迪',
+                '000002': '万科A',
+            }
+            base_price = stock_names.get(stock_code, np.random.uniform(10, 500))
+            
         elif stock_code.isalpha():  # 美股
-            base_price = np.random.uniform(50, 1000)  # 美股价格范围
+            stock_names = {
+                'AAPL': 'Apple Inc.',
+                'TSLA': 'Tesla Inc.',
+                'MSFT': 'Microsoft Corporation',
+                'GOOGL': 'Alphabet Inc.',
+                'AMZN': 'Amazon.com Inc.',
+            }
+            base_price = stock_names.get(stock_code, np.random.uniform(50, 1000))
+            
+        elif stock_code.endswith(('.L', '.DE', '.PA', '.SW', '.AS')):  # 欧股
+            base_price = np.random.uniform(5, 200)
+            
+        else:  # 其他
+            base_price = np.random.uniform(10, 500)
         
         # 生成价格序列
         n_days = len(dates)
@@ -50,7 +75,12 @@ class SimpleFetcher:
         
         prices = [base_price]
         for ret in returns[1:]:
-            prices.append(prices[-1] * (1 + ret))
+            # 防止价格为负
+            new_price = prices[-1] * (1 + ret)
+            if new_price > 0:
+                prices.append(new_price)
+            else:
+                prices.append(prices[-1] * 0.99)  # 最多跌1%
         
         # 生成OHLC数据
         data = []
@@ -66,7 +96,7 @@ class SimpleFetcher:
             high = max(high, open_price, close_price)
             low = min(low, open_price, close_price)
             
-            volume = int(np.random.uniform(1000000, 10000000))
+            volume = int(np.random.uniform(1000000, 50000000))
             
             data.append({
                 'date': date,
@@ -86,22 +116,29 @@ class SimpleFetcher:
         df['ma10'] = df['close'].rolling(window=10, min_periods=1).mean()
         df['ma20'] = df['close'].rolling(window=20, min_periods=1).mean()
         
+        # 计算量比
         avg_volume = df['volume'].rolling(window=5, min_periods=1).mean()
         df['volume_ratio'] = df['volume'] / avg_volume.shift(1)
         df['volume_ratio'] = df['volume_ratio'].fillna(1.0)
+        
+        logger.info(f"[MockFetcher] 成功生成 {stock_code} 数据：{len(df)} 条，最新价格 {df['close'].iloc[-1]:.2f}")
         
         return df
     
     def get_realtime_quote(self, stock_code):
         """获取模拟实时行情"""
         
-        # 生成基础信息
         stock_names = {
             '600519': '贵州茅台',
             '000001': '平安银行', 
             '300750': '宁德时代',
+            '002594': '比亚迪',
+            '000002': '万科A',
             'AAPL': 'Apple Inc.',
             'TSLA': 'Tesla Inc.',
+            'MSFT': 'Microsoft Corporation',
+            'GOOGL': 'Alphabet Inc.',
+            'AMZN': 'Amazon.com Inc.',
             'VOD.L': 'Vodafone Group',
             'SAP.DE': 'SAP SE',
             'MSFT': 'Microsoft Corporation',
@@ -129,47 +166,3 @@ class SimpleFetcher:
             'volume': int(volume),
             'source': self.name
         }
-
-def test_simple_data():
-    """测试简单数据源"""
-    
-    print('=== Simple Data Source Test ===')
-    
-    fetcher = SimpleFetcher()
-    
-    test_stocks = ['600519', 'AAPL', 'TSLA']
-    
-    for stock in test_stocks:
-        print(f'\\nTesting {stock}...')
-        
-        # 测试历史数据
-        df = fetcher.get_daily_data(stock, days=10)
-        
-        if df is not None and not df.empty:
-            print(f'  Success! Shape: {df.shape}')
-            close_price = df["close"].iloc[-1]
-            print(f'  Latest price: {close_price:.2f}')
-            
-            start_date = df["date"].min().strftime("%Y-%m-%d")
-            end_date = df["date"].max().strftime("%Y-%m-%d")
-            print(f'  Date range: {start_date} to {end_date}')
-            
-            print(f'  Sample data:')
-            sample_cols = ['date', 'open', 'high', 'low', 'close', 'volume', 'pct_chg']
-            print(df.tail(2)[sample_cols].to_string())
-        else:
-            print(f'  Failed - empty data')
-        
-        # 测试实时行情
-        quote = fetcher.get_realtime_quote(stock)
-        if quote:
-            quote_name = quote["name"]
-            quote_code = quote["code"]
-            quote_price = quote["price"]
-            quote_change = quote["change_pct"]
-            print(f'  Quote: {quote_name} ({quote_code}) - {quote_price} ({quote_change:+.2f}%)')
-        else:
-            print(f'  Quote failed')
-
-if __name__ == '__main__':
-    test_simple_data()
