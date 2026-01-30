@@ -490,7 +490,7 @@ class GeminiAnalyzer:
         配置：
         - 使用 gemini-3-flash-preview 或 gemini-2.5-flash 模型
         - 不启用 Google Search（使用外部 Tavily/SerpAPI 搜索）
-        """
+"""
         try:
             import google.generativeai as genai
             
@@ -535,7 +535,7 @@ class GeminiAnalyzer:
         
         Returns:
             是否成功切换
-        """
+"""
         try:
             import google.generativeai as genai
             config = get_config()
@@ -625,9 +625,11 @@ class GeminiAnalyzer:
             prompt: 提示词
             generation_config: 生成配置
             
-        Returns:
+Returns:
             响应文本
         """
+        import google.generativeai as genai
+        
         # 如果已经在使用 OpenAI 模式，直接调用 OpenAI
         if self._use_openai:
             return self._call_openai_api(prompt, generation_config)

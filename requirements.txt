@@ -23,7 +23,9 @@ pandas>=2.0.0               # 数据分析
 numpy>=1.24.0               # 数值计算
 
 # AI 分析
-google-generativeai>=0.8.0  # Gemini API
+# Note: google-generativeai is deprecated but required due to Python 3.8 compatibility
+# Migration to google-genai requires Python >=3.9
+google-generativeai>=0.8.0  # Gemini API (deprecated)
 openai>=1.0.0               # OpenAI 兼容 API（可选，支持 DeepSeek/通义千问等）
 
 # 搜索引擎（用于获取股票新闻）
