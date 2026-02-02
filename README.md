@@ -77,7 +77,8 @@
 | `EMAIL_RECEIVERS` | 收件人邮箱（多个用逗号分隔，留空则发给自己） | 可选 |
 | `CUSTOM_WEBHOOK_URLS` | 自定义 Webhook（支持钉钉等，多个用逗号分隔） | 可选 |
 | `CUSTOM_WEBHOOK_BEARER_TOKEN` | 自定义 Webhook 的 Bearer Token（用于需要认证的 Webhook） | 可选 |
-| `SINGLE_STOCK_NOTIFY` | 单股推送模式：设为 `true` 则每分析完一只股票立即推送 | 可选 |
+| `SINGLE_STOCK_NOTIFY` | 单股推送模式：设为 `True` 则每分析完一只股票立即推送 | 可选 |
+| `SINGLE_EMAIL_NOTIFY` | 单独推送模式：设为 `True` 则每个分析结果单独推送 | 可选 |
 
 > *注：至少配置一个渠道，配置多个则同时推送
 >
