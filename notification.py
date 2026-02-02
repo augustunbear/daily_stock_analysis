@@ -2945,6 +2945,30 @@ class NotificationService:
         import re
         
         date_str = datetime.now().strftime('%Y-%m-%d')
+
+        def _extract_company_names(text: str) -> List[str]:
+            pattern = r'^###\s*[🟢🟡🔴]?\s*([^()]+?)\s*\(([^)]+)\)'  # 日报格式
+            matches = re.findall(pattern, text, re.MULTILINE)
+            names = []
+            seen = set()
+            for name, _code in matches:
+                clean_name = name.strip()
+                key = clean_name.lower()
+                if clean_name and key not in seen:
+                    seen.add(key)
+                    names.append(clean_name)
+            return names
+
+        def _build_company_suffix(names: List[str], max_names: int = 3, max_chars: int = 24) -> str:
+            if not names:
+                return ""
+            display_names = names[:max_names]
+            suffix = "、".join(display_names)
+            if len(names) > max_names:
+                suffix += "等"
+            if len(suffix) > max_chars:
+                suffix = suffix[:max_chars].rstrip("、") + "…"
+            return suffix
         
         try:
             # 尝试从内容中提取统计信息
@@ -2952,9 +2976,12 @@ class NotificationService:
             pattern1 = r'共分析\s*\**(\d+)\**\s*只股票.*?🟢买入:(\d+).*?🟡观望:(\d+).*?🔴卖出:(\d+)'
             match1 = re.search(pattern1, content, re.DOTALL)
             
+            company_suffix = _build_company_suffix(_extract_company_names(content))
+
             if match1:
                 total, buy, hold, sell = match1.groups()
-                return f"📈 股市分析报告 - {date_str} | 共{total}只 | 🟢买入:{buy} 🟡观望:{hold} 🔴卖出:{sell}"
+                suffix = f" | {company_suffix}" if company_suffix else ""
+                return f"📈 股市分析报告 - {date_str} | 共{total}只 | 🟢买入:{buy} 🟡观望:{hold} 🔴卖出:{sell}{suffix}"
             
             # 格式2: "X只股票 | 🟢买入:X 🟡观望:X 🔴卖出:X"
             pattern2 = r'(\d+)只股票.*?🟢买入:(\d+).*?🟡观望:(\d+).*?🔴卖出:(\d+)'
@@ -2962,7 +2989,8 @@ class NotificationService:
             
             if match2:
                 total, buy, hold, sell = match2.groups()
-                return f"📈 股市分析报告 - {date_str} | 共{total}只 | 🟢买入:{buy} 🟡观望:{hold} 🔴卖出:{sell}"
+                suffix = f" | {company_suffix}" if company_suffix else ""
+                return f"📈 股市分析报告 - {date_str} | 共{total}只 | 🟢买入:{buy} 🟡观望:{hold} 🔴卖出:{sell}{suffix}"
             
             # 格式3: 单股报告，提取股票名称和建议
             pattern3 = r'###\s*[🟢🟡🔴]\s*([^()]+)\s*\(([^)]+)\)'
@@ -2980,12 +3008,13 @@ class NotificationService:
                 return f"📈 {stock_name}({stock_code}) {advice} - {date_str}"
             
             # 默认标题
+            suffix = f" | {company_suffix}" if company_suffix else ""
             if "决策仪表盘" in content:
-                return f"📈 决策仪表盘报告 - {date_str}"
+                return f"📈 决策仪表盘报告 - {date_str}{suffix}"
             elif "分析报告" in content:
-                return f"📈 股票分析报告 - {date_str}"
+                return f"📈 股票分析报告 - {date_str}{suffix}"
             else:
-                return f"📈 A股智能分析报告 - {date_str}"
+                return f"📈 A股智能分析报告 - {date_str}{suffix}"
                 
         except Exception as e:
             logger.warning(f"智能生成邮件标题失败，使用默认标题: {e}")

@@ -570,10 +570,25 @@ class StockAnalysisPipeline:
         if stock_codes is None:
             self.config.refresh_stock_list()
             stock_codes = self.config.stock_list
-        
+
         if not stock_codes:
             logger.error("未配置自选股列表，请在 .env 文件中设置 STOCK_LIST")
             return []
+
+        # 分析前去重（保留首次出现顺序）
+        seen_codes = set()
+        deduped_codes: List[str] = []
+        duplicates: List[str] = []
+        for code in stock_codes:
+            key = code.upper().strip()
+            if key in seen_codes:
+                duplicates.append(code)
+                continue
+            seen_codes.add(key)
+            deduped_codes.append(code)
+        if duplicates:
+            logger.info(f"检测到重复股票代码，已去重: {', '.join(duplicates)}")
+        stock_codes = deduped_codes
         
         logger.info(f"===== 开始分析 {len(stock_codes)} 只股票 =====")
         logger.info(f"股票列表: {', '.join(stock_codes)}")
