@@ -705,6 +705,14 @@ class StockAnalysisPipeline:
             # 保存到本地
             filepath = self.notifier.save_report_to_file(report)
             logger.info(f"决策仪表盘日报已保存: {filepath}")
+
+            raw_payload = {
+                "generated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "count": len(results),
+                "results": [r.to_dict() for r in results],
+            }
+            raw_filepath = self.notifier.save_report_payload_to_file(raw_payload)
+            logger.info(f"原始报告数据已保存: {raw_filepath}")
             
             # 跳过推送（单股推送模式）
             if skip_push:

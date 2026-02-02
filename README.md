@@ -19,6 +19,7 @@
 - **多维度分析** - 技术面 + 筹码分布 + 舆情情报 + 实时行情 + 财报数据
 - **大盘复盘** - 每日市场概览、板块涨跌、北向资金、全球指数联动
 - **多渠道推送** - 支持企业微信、飞书、Telegram、邮件（自动识别）
+- **☁️ 云端归档** - 报告与原始数据可自动保存到 Cloudflare R2（可选）
 - **零成本部署** - GitHub Actions 免费运行，无需服务器
 - **💰 白嫖 Gemini API** - Google AI Studio 提供免费额度，个人使用完全够用
 - **🔄 多模型支持** - 支持 OpenAI 兼容 API（DeepSeek、通义千问等）作为备选
@@ -92,6 +93,12 @@
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/) 备用搜索 | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/) Token | 可选 |
 | `ALPHA_VANTAGE_KEY` | [Alpha Vantage](https://www.alphavantage.com/) API Key（美股、欧洲股市备用数据源） | 可选 |
+| `R2_ENDPOINT` | Cloudflare R2 S3 兼容 Endpoint | 可选 |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 Access Key ID | 可选 |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 Secret Access Key | 可选 |
+| `R2_BUCKET` | Cloudflare R2 Bucket 名称 | 可选 |
+| `R2_PREFIX` | Cloudflare R2 存储前缀（如 `reports/`） | 可选 |
+| `R2_PUBLIC_BASE_URL` | 公网访问域名（可选，用于生成公开 URL） | 可选 |
 
 #### 3. 启用 Actions
 

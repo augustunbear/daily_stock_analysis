@@ -164,6 +164,14 @@ class Config:
     
     # Telegram 机器人 - 已有 telegram_bot_token, telegram_chat_id
     telegram_webhook_secret: Optional[str] = None   # Webhook 密钥
+
+    # Cloudflare R2
+    r2_endpoint: Optional[str] = None
+    r2_access_key_id: Optional[str] = None
+    r2_secret_access_key: Optional[str] = None
+    r2_bucket: Optional[str] = None
+    r2_prefix: Optional[str] = None
+    r2_public_base_url: Optional[str] = None
     
     # 单例实例存储
     _instance: Optional['Config'] = None
@@ -289,6 +297,12 @@ feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             wecom_agent_id=os.getenv('WECOM_AGENT_ID'),
             # Telegram
             telegram_webhook_secret=os.getenv('TELEGRAM_WEBHOOK_SECRET'),
+            r2_endpoint=os.getenv('R2_ENDPOINT'),
+            r2_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
+            r2_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY'),
+            r2_bucket=os.getenv('R2_BUCKET'),
+            r2_prefix=os.getenv('R2_PREFIX', ''),
+            r2_public_base_url=os.getenv('R2_PUBLIC_BASE_URL'),
         )
     
     @classmethod

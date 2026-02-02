@@ -34,6 +34,7 @@ from analyzer import AnalysisResult
 from bot.models import BotMessage
 from currency_converter import get_currency_converter
 from market_types import Market
+from r2_storage import R2Storage
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ class NotificationService:
         """
         config = get_config()
         self._source_message = source_message
+        self._r2_storage = R2Storage.from_config(config)
         self._context_channels: List[str] = []
         
         # 各渠道的 Webhook URL
@@ -3084,16 +3086,38 @@ class NotificationService:
             date_str = datetime.now().strftime('%Y%m%d')
             filename = f"report_{date_str}.md"
         
+        return self._save_text_report(content, filename, "text/markdown; charset=utf-8")
+
+    def save_report_payload_to_file(
+        self,
+        payload: Dict[str, Any],
+        filename: Optional[str] = None
+    ) -> str:
+        if filename is None:
+            date_str = datetime.now().strftime('%Y%m%d')
+            filename = f"report_{date_str}.json"
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
+        return self._save_text_report(content, filename, "application/json; charset=utf-8")
+
+    def _save_text_report(self, content: str, filename: str, content_type: str) -> str:
+        from pathlib import Path
+
         # 确保 reports 目录存在
         reports_dir = Path(__file__).parent / 'reports'
         reports_dir.mkdir(parents=True, exist_ok=True)
-        
+
         filepath = reports_dir / filename
-        
+
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
-        
+
         logger.info(f"日报已保存到: {filepath}")
+
+        if self._r2_storage:
+            url = self._r2_storage.upload_file(str(filepath))
+            if url:
+                logger.info(f"R2 报告地址: {url}")
+
         return str(filepath)
 
 
