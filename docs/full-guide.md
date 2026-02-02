@@ -57,6 +57,7 @@
 | `CUSTOM_WEBHOOK_URLS` | 自定义 Webhook（支持钉钉等，多个用逗号分隔） | 可选 |
 | `CUSTOM_WEBHOOK_BEARER_TOKEN` | 自定义 Webhook 的 Bearer Token（用于需要认证的 Webhook） | 可选 |
 | `SINGLE_STOCK_NOTIFY` | 单股推送模式：设为 `true` 则每分析完一只股票立即推送 | 可选 |
+| `SINGLE_STOCK_EMAIL` | 单股邮件模式：设为 `true` 则每分析完一只股票立即发邮件（兼容 `SINGLE_EMAIL_NOTIFY`） | 可选 |
 
 > *注：至少配置一个渠道，配置多个则同时推送
 
@@ -129,6 +130,8 @@
 | `EMAIL_RECEIVERS` | 收件人邮箱（逗号分隔，留空发给自己） | 可选 |
 | `CUSTOM_WEBHOOK_URLS` | 自定义 Webhook（逗号分隔） | 可选 |
 | `CUSTOM_WEBHOOK_BEARER_TOKEN` | 自定义 Webhook Bearer Token | 可选 |
+| `SINGLE_STOCK_NOTIFY` | 单股推送模式：设为 `true` 则每分析完一只股票立即推送 | 可选 |
+| `SINGLE_STOCK_EMAIL` | 单股邮件模式：设为 `true` 则每分析完一只股票立即发邮件（兼容 `SINGLE_EMAIL_NOTIFY`） | 可选 |
 | `PUSHOVER_USER_KEY` | Pushover 用户 Key | 可选 |
 | `PUSHOVER_API_TOKEN` | Pushover API Token | 可选 |
 

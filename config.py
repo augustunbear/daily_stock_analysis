@@ -227,6 +227,18 @@ class Config:
         
         serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '')
         serpapi_keys = [k.strip() for k in serpapi_keys_str.split(',') if k.strip()]
+
+        def _get_bool_env(primary_key: str, aliases: Optional[List[str]] = None, default: str = 'false') -> bool:
+            value = os.getenv(primary_key)
+            if value is None and aliases:
+                for alias in aliases:
+                    alias_value = os.getenv(alias)
+                    if alias_value is not None:
+                        value = alias_value
+                        break
+            if value is None:
+                value = default
+            return value.strip().lower() == 'true'
         
         return cls(
             stock_list=stock_list,
@@ -261,8 +273,8 @@ feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             discord_bot_token=os.getenv('DISCORD_BOT_TOKEN'),
             discord_main_channel_id=os.getenv('DISCORD_MAIN_CHANNEL_ID'),
             discord_webhook_url=os.getenv('DISCORD_WEBHOOK_URL'),
-            single_stock_notify=os.getenv('SINGLE_STOCK_NOTIFY', 'false').lower() == 'true',
-            single_stock_email=os.getenv('SINGLE_STOCK_EMAIL', 'false').lower() == 'true',
+            single_stock_notify=_get_bool_env('SINGLE_STOCK_NOTIFY'),
+            single_stock_email=_get_bool_env('SINGLE_STOCK_EMAIL', aliases=['SINGLE_EMAIL_NOTIFY']),
             feishu_max_bytes=int(os.getenv('FEISHU_MAX_BYTES', '20000')),
             wechat_max_bytes=int(os.getenv('WECHAT_MAX_BYTES', '4000')),
             database_path=os.getenv('DATABASE_PATH', './data/stock_analysis.db'),
