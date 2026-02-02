@@ -397,82 +397,150 @@ class EUStockFetcher(BaseFetcher):
             if current_time - cached_data['timestamp'] < self._cache_timeout:
                 logger.debug(f"[缓存命中] {symbol} 实时行情")
                 return cached_data['quote']
-        
-        try:
-            import yfinance as yf
-            
-            # 创建Ticker对象
-            ticker = yf.Ticker(symbol)
-            
-            # 获取基本信息
-            info = ticker.info
-            
-            # 获取当前价格数据
-            history = ticker.history(period="1d", interval="1m")
-            
-            if history.empty or info is None:
-                logger.warning(f"无法获取{symbol}的实时数据")
+        quote = None
+
+        if self.alpha_vantage_key:
+            try:
+                quote = self._fetch_alpha_vantage_quote(symbol, stock_code, exchange_info)
+            except Exception as e:
+                logger.warning(f"Alpha Vantage获取{symbol}失败: {e}，尝试Yahoo Finance")
+
+        if quote is None:
+            try:
+                quote = self._fetch_yahoo_realtime_quote(symbol, stock_code, exchange_info)
+            except Exception as e:
+                logger.error(f"Yahoo Finance获取{symbol}实时行情失败: {e}")
                 return None
-            
-            # 获取最新数据
-            latest = history.iloc[-1]
-            
-            # 计算美元市值（汇率估算）
-            market_cap_local = float(info.get('marketCap', 0))
-            # 简单汇率估算（实际应用中应该获取实时汇率）
-            currency_usd_rate = {
-                'GBP': 1.25,
-                'EUR': 1.08,
-                'CHF': 1.15
-            }.get(exchange_info['currency'], 1.0)
-            
-            quote = EURealtimeQuote(
-                code=stock_code,
-                name=info.get('shortName', ''),
-                exchange=exchange_info['name'],
-                currency=exchange_info['currency'],
-                
-                # 基础价格数据
-                price=float(latest.get('Close', 0)),
-                change_pct=float(info.get('regularMarketChangePercent', 0)),
-                change_amount=float(info.get('regularMarketChange', 0)),
-                
-                # 量价数据
-                volume=int(info.get('regularMarketVolume', 0)),
-                avg_volume=int(info.get('averageVolume', 0)),
-                volume_ratio=float(info.get('averageVolume', 1)) / max(1, float(info.get('regularMarketVolume', 1))),
-                
-                # 估值指标
-                pe_ratio=float(info.get('trailingPE', 0)),
-                market_cap=market_cap_local,
-                market_cap_usd=market_cap_local / currency_usd_rate,
-                dividend_yield=float(info.get('dividendYield', 0)) * 100,
-                
-                # 技术指标
-                day_high=float(info.get('regularMarketDayHigh', 0)),
-                day_low=float(info.get('regularMarketDayLow', 0)),
-                week_52_high=float(info.get('fiftyTwoWeekHigh', 0)),
-                week_52_low=float(info.get('fiftyTwoWeekLow', 0)),
-                
-                # 欧洲特有信息
-                sector=info.get('sector', ''),
-                country=exchange_info['country'],
-                regulatory_info=f"{exchange_info['regulator']} regulated",
-            )
-            
-            # 缓存结果
-            self._price_cache[cache_key] = {
-                'quote': quote,
-                'timestamp': current_time
-            }
-            
-            logger.info(f"[欧洲股实时] {symbol} {quote.name}: {quote.currency}{quote.price:.2f}, "
-                       f"涨跌={quote.change_pct:.2f}%, PE={quote.pe_ratio:.2f}")
-            return quote
-            
-        except Exception as e:
-            logger.error(f"获取{symbol}实时行情失败: {e}")
+
+        if quote is None:
             return None
+
+        self._price_cache[cache_key] = {
+            'quote': quote,
+            'timestamp': current_time
+        }
+
+        logger.info(f"[欧洲股实时] {symbol} {quote.name}: {quote.currency}{quote.price:.2f}, "
+                   f"涨跌={quote.change_pct:.2f}%")
+        return quote
+
+    def _fetch_alpha_vantage_quote(
+        self,
+        symbol: str,
+        stock_code: str,
+        exchange_info: Dict[str, str]
+    ) -> EURealtimeQuote:
+        if not self.alpha_vantage_key:
+            raise DataFetchError("未配置Alpha Vantage API Key")
+
+        import requests
+
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": symbol,
+            "apikey": self.alpha_vantage_key,
+        }
+        response = requests.get("https://www.alphavantage.co/query", params=params, timeout=10)
+        data = response.json()
+        quote_data = data.get("Global Quote") or {}
+
+        if not quote_data:
+            raise DataFetchError("Alpha Vantage未返回实时行情")
+
+        price = float(quote_data.get("05. price", 0) or 0)
+        change_amount = float(quote_data.get("09. change", 0) or 0)
+        change_pct_str = str(quote_data.get("10. change percent", "0"))
+        change_pct = float(change_pct_str.replace("%", "") or 0)
+        volume = int(float(quote_data.get("06. volume", 0) or 0))
+
+        return EURealtimeQuote(
+            code=stock_code,
+            name=symbol,
+            exchange=exchange_info['name'],
+            currency=exchange_info['currency'],
+            price=price,
+            change_pct=change_pct,
+            change_amount=change_amount,
+            volume=volume,
+            avg_volume=0,
+            volume_ratio=0.0,
+            pe_ratio=0.0,
+            market_cap=0.0,
+            market_cap_usd=0.0,
+            dividend_yield=0.0,
+            day_high=float(quote_data.get("03. high", 0) or 0),
+            day_low=float(quote_data.get("04. low", 0) or 0),
+            week_52_high=0.0,
+            week_52_low=0.0,
+            sector="",
+            country=exchange_info['country'],
+            regulatory_info=f"{exchange_info['regulator']} regulated",
+        )
+
+    def _fetch_yahoo_realtime_quote(
+        self,
+        symbol: str,
+        stock_code: str,
+        exchange_info: Dict[str, str]
+    ) -> Optional[EURealtimeQuote]:
+        import yfinance as yf
+
+        ticker = yf.Ticker(symbol)
+        info = {}
+        try:
+            info = ticker.fast_info or {}
+        except Exception:
+            info = {}
+        if not info:
+            info = ticker.info or {}
+
+        price = info.get('last_price') or info.get('regularMarketPrice') or info.get('currentPrice') or 0
+        prev_close = info.get('previous_close') or info.get('regularMarketPreviousClose') or 0
+        change_amount = info.get('regularMarketChange')
+        if change_amount is None and prev_close:
+            change_amount = price - prev_close
+        change_pct = info.get('regularMarketChangePercent')
+        if change_pct is None and prev_close:
+            change_pct = (price - prev_close) / prev_close * 100
+
+        volume = info.get('last_volume') or info.get('regularMarketVolume') or 0
+        avg_volume = info.get('ten_day_average_volume') or info.get('averageVolume') or 0
+        volume_ratio = (volume / avg_volume) if avg_volume else 0
+
+        market_cap_local = float(info.get('market_cap') or info.get('marketCap') or 0)
+        currency_usd_rate = {
+            'GBP': 1.25,
+            'EUR': 1.08,
+            'CHF': 1.15
+        }.get(exchange_info['currency'], 1.0)
+
+        dividend_yield = info.get('dividend_yield') or info.get('dividendYield') or 0
+        if dividend_yield and dividend_yield <= 1:
+            dividend_yield = dividend_yield * 100
+
+        return EURealtimeQuote(
+            code=stock_code,
+            name=info.get('shortName') or info.get('longName') or symbol,
+            exchange=exchange_info['name'],
+            currency=exchange_info['currency'],
+            price=float(price or 0),
+            change_pct=float(change_pct or 0),
+            change_amount=float(change_amount or 0),
+            volume=int(volume or 0),
+            avg_volume=int(avg_volume or 0),
+            volume_ratio=float(volume_ratio or 0),
+            pe_ratio=float(info.get('pe_ratio') or info.get('trailingPE') or 0),
+            market_cap=market_cap_local,
+            market_cap_usd=market_cap_local / currency_usd_rate if currency_usd_rate else 0.0,
+            dividend_yield=float(dividend_yield or 0),
+            day_high=float(info.get('day_high') or info.get('regularMarketDayHigh') or 0),
+            day_low=float(info.get('day_low') or info.get('regularMarketDayLow') or 0),
+            week_52_high=float(info.get('week_52_high') or info.get('fiftyTwoWeekHigh') or 0),
+            week_52_low=float(info.get('week_52_low') or info.get('fiftyTwoWeekLow') or 0),
+            sector=info.get('sector', ''),
+            country=exchange_info['country'],
+            regulatory_info=f"{exchange_info['regulator']} regulated",
+        )
     
     def get_enhanced_data(self, stock_code: str, days: int = 60) -> Dict[str, Any]:
         """

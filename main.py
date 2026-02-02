@@ -62,6 +62,12 @@ except ImportError:
     AkshareFetcher = None
     RealtimeQuote = None
     ChipDistribution = None
+try:
+    from data_provider.us_stock_fetcher import USStockFetcher
+    from data_provider.eu_stock_fetcher import EUStockFetcher
+except ImportError:
+    USStockFetcher = None
+    EUStockFetcher = None
 from analyzer import GeminiAnalyzer, AnalysisResult, STOCK_NAME_MAP
 from notification import NotificationService, NotificationChannel, send_daily_report
 from bot.models import BotMessage
@@ -69,7 +75,7 @@ from search_service import SearchService, SearchResponse
 from enums import ReportType
 from stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from market_analyzer import MarketAnalyzer
-from market_types import resolve_stock_alias
+from market_types import resolve_stock_alias, Market
 
 # 配置日志格式
 LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s'
@@ -180,7 +186,9 @@ class StockAnalysisPipeline:
         # 初始化各模块
         self.db = get_db()
         self.fetcher_manager = DataFetcherManager()
-        self.akshare_fetcher = AkshareFetcher()  # 用于获取增强数据（量比、筹码等）
+        self.akshare_fetcher = AkshareFetcher() if AkshareFetcher else None  # A股增强数据
+        self.us_stock_fetcher = USStockFetcher(self.config.alpha_vantage_key) if USStockFetcher else None
+        self.eu_stock_fetcher = EUStockFetcher(self.config.alpha_vantage_key) if EUStockFetcher else None
         self.trend_analyzer = StockTrendAnalyzer()  # 趋势分析器
         self.analyzer = GeminiAnalyzer()
         self.notifier = NotificationService(source_message=source_message)
@@ -267,16 +275,32 @@ class StockAnalysisPipeline:
             # 获取股票名称（优先从实时行情获取真实名称）
             stock_name = STOCK_NAME_MAP.get(code, '')
             
-            # Step 1: 获取实时行情（量比、换手率等）
-            realtime_quote: Optional[RealtimeQuote] = None
+            # Step 1: 获取实时行情（按市场分流）
+            realtime_quote = None
+            market = Market.from_stock_code(code)
             try:
-                realtime_quote = self.akshare_fetcher.get_realtime_quote(code)
+                if market in [Market.CHINA_A, Market.HONG_KONG]:
+                    if self.akshare_fetcher:
+                        realtime_quote = self.akshare_fetcher.get_realtime_quote(code)
+                elif market in [Market.US_NYSE, Market.US_NASDAQ, Market.US_AMEX]:
+                    if self.us_stock_fetcher:
+                        realtime_quote = self.us_stock_fetcher.get_realtime_quote(code)
+                elif market in [Market.UK_LSE, Market.GER_XETRA, Market.FRA_EURONEXT, Market.SWX_SIX, Market.EURONEXT]:
+                    if self.eu_stock_fetcher:
+                        realtime_quote = self.eu_stock_fetcher.get_realtime_quote(code)
+                else:
+                    logger.info(f"[{code}] 未识别的市场，跳过实时行情获取")
+
                 if realtime_quote:
-                    # 使用实时行情返回的真实股票名称
-                    if realtime_quote.name:
+                    if getattr(realtime_quote, 'name', ''):
                         stock_name = realtime_quote.name
-                    logger.info(f"[{code}] {stock_name} 实时行情: 价格={realtime_quote.price}, "
-                              f"量比={realtime_quote.volume_ratio}, 换手率={realtime_quote.turnover_rate}%")
+                    turnover_rate = getattr(realtime_quote, 'turnover_rate', None)
+                    if turnover_rate is not None:
+                        logger.info(f"[{code}] {stock_name} 实时行情: 价格={realtime_quote.price}, "
+                                  f"量比={realtime_quote.volume_ratio}, 换手率={turnover_rate}%")
+                    else:
+                        logger.info(f"[{code}] {stock_name} 实时行情: 价格={realtime_quote.price}, "
+                                  f"量比={getattr(realtime_quote, 'volume_ratio', 0)}")
             except Exception as e:
                 logger.warning(f"[{code}] 获取实时行情失败: {e}")
             
@@ -284,15 +308,16 @@ class StockAnalysisPipeline:
             if not stock_name:
                 stock_name = f'股票{code}'
             
-            # Step 2: 获取筹码分布
-            chip_data: Optional[ChipDistribution] = None
-            try:
-                chip_data = self.akshare_fetcher.get_chip_distribution(code)
-                if chip_data:
-                    logger.info(f"[{code}] 筹码分布: 获利比例={chip_data.profit_ratio:.1%}, "
-                              f"90%集中度={chip_data.concentration_90:.2%}")
-            except Exception as e:
-                logger.warning(f"[{code}] 获取筹码分布失败: {e}")
+            # Step 2: 获取筹码分布（仅 A股/港股）
+            chip_data = None
+            if market in [Market.CHINA_A, Market.HONG_KONG] and self.akshare_fetcher:
+                try:
+                    chip_data = self.akshare_fetcher.get_chip_distribution(code)
+                    if chip_data:
+                        logger.info(f"[{code}] 筹码分布: 获利比例={chip_data.profit_ratio:.1%}, "
+                                  f"90%集中度={chip_data.concentration_90:.2%}")
+                except Exception as e:
+                    logger.warning(f"[{code}] 获取筹码分布失败: {e}")
             
             # Step 3: 趋势分析（基于交易理念）
             trend_result: Optional[TrendAnalysisResult] = None
@@ -362,8 +387,8 @@ class StockAnalysisPipeline:
     def _enhance_context(
         self,
         context: Dict[str, Any],
-        realtime_quote: Optional[RealtimeQuote],
-        chip_data: Optional[ChipDistribution],
+        realtime_quote: Optional[Any],
+        chip_data: Optional[Any],
         trend_result: Optional[TrendAnalysisResult],
         stock_name: str = ""
     ) -> Dict[str, Any]:
@@ -392,17 +417,26 @@ class StockAnalysisPipeline:
         
         # 添加实时行情
         if realtime_quote:
+            total_mv = getattr(realtime_quote, 'total_mv', None)
+            if total_mv is None:
+                total_mv = getattr(realtime_quote, 'market_cap', None)
+            circ_mv = getattr(realtime_quote, 'circ_mv', None)
+            if circ_mv is None:
+                circ_mv = getattr(realtime_quote, 'market_cap', None)
+            volume_ratio = getattr(realtime_quote, 'volume_ratio', None)
+            if volume_ratio is None:
+                volume_ratio = 0
             enhanced['realtime'] = {
-                'name': realtime_quote.name,  # 股票名称
-                'price': realtime_quote.price,
-                'volume_ratio': realtime_quote.volume_ratio,
-                'volume_ratio_desc': self._describe_volume_ratio(realtime_quote.volume_ratio),
-                'turnover_rate': realtime_quote.turnover_rate,
-                'pe_ratio': realtime_quote.pe_ratio,
-                'pb_ratio': realtime_quote.pb_ratio,
-                'total_mv': realtime_quote.total_mv,
-                'circ_mv': realtime_quote.circ_mv,
-                'change_60d': realtime_quote.change_60d,
+                'name': getattr(realtime_quote, 'name', ''),
+                'price': getattr(realtime_quote, 'price', None),
+                'volume_ratio': volume_ratio,
+                'volume_ratio_desc': self._describe_volume_ratio(volume_ratio),
+                'turnover_rate': getattr(realtime_quote, 'turnover_rate', None),
+                'pe_ratio': getattr(realtime_quote, 'pe_ratio', None),
+                'pb_ratio': getattr(realtime_quote, 'pb_ratio', None),
+                'total_mv': total_mv,
+                'circ_mv': circ_mv,
+                'change_60d': getattr(realtime_quote, 'change_60d', None),
             }
         
         # 添加筹码分布

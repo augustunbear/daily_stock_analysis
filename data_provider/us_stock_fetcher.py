@@ -350,70 +350,127 @@ class USStockFetcher(BaseFetcher):
             if current_time - cached_data['timestamp'] < self._cache_timeout:
                 logger.debug(f"[缓存命中] {symbol} 实时行情")
                 return cached_data['quote']
-        
-        try:
-            import yfinance as yf
-            
-            # 创建Ticker对象
-            ticker = yf.Ticker(symbol)
-            
-            # 获取基本信息
-            info = ticker.info
-            
-            # 获取当前价格数据
-            history = ticker.history(period="1d", interval="1m", prepost=True)
-            
-            if history.empty or info is None:
-                logger.warning(f"无法获取{symbol}的实时数据")
+        quote = None
+
+        if self.alpha_vantage_key:
+            try:
+                quote = self._fetch_alpha_vantage_quote(symbol, stock_code)
+            except Exception as e:
+                logger.warning(f"Alpha Vantage获取{symbol}失败: {e}，尝试Yahoo Finance")
+
+        if quote is None:
+            try:
+                quote = self._fetch_yahoo_realtime_quote(symbol, stock_code)
+            except Exception as e:
+                logger.error(f"Yahoo Finance获取{symbol}实时行情失败: {e}")
                 return None
-            
-            # 获取最新数据
-            latest = history.iloc[-1]
-            
-            quote = USRealtimeQuote(
-                code=stock_code,
-                name=info.get('shortName', ''),
-                price=float(latest.get('Close', 0)),
-                change_pct=float(info.get('regularMarketChangePercent', 0)),
-                change_amount=float(info.get('regularMarketChange', 0)),
-                
-                # 盘前盘后数据
-                pre_market_price=float(info.get('preMarketPrice', 0)),
-                pre_market_change=float(info.get('preMarketChangePercent', 0)),
-                after_market_price=float(info.get('postMarketPrice', 0)),
-                after_market_change=float(info.get('postMarketChangePercent', 0)),
-                
-                # 量价数据
-                volume=int(info.get('regularMarketVolume', 0)),
-                avg_volume=int(info.get('averageVolume', 0)),
-                volume_ratio=float(info.get('averageVolume', 1)) / max(1, float(info.get('regularMarketVolume', 1))),
-                
-                # 估值指标
-                pe_ratio=float(info.get('trailingPE', 0)),
-                eps=float(info.get('trailingEps', 0)),
-                market_cap=float(info.get('marketCap', 0)),
-                dividend_yield=float(info.get('dividendYield', 0)) * 100,  # 转换为百分比
-                
-                # 技术指标
-                day_high=float(info.get('regularMarketDayHigh', 0)),
-                day_low=float(info.get('regularMarketDayLow', 0)),
-                week_52_high=float(info.get('fiftyTwoWeekHigh', 0)),
-                week_52_low=float(info.get('fiftyTwoWeekLow', 0)),
-            )
-            
-            # 缓存结果
-            self._price_cache[cache_key] = {
-                'quote': quote,
-                'timestamp': current_time
-            }
-            
-            logger.info(f"[美股实时] {symbol} {quote.name}: 价格=${quote.price:.2f}, "
-                       f"涨跌={quote.change_pct:.2f}%, PE={quote.pe_ratio:.2f}")
-            return quote
-            
-        except Exception as e:
-            logger.error(f"获取{symbol}实时行情失败: {e}")
+
+        if quote is None:
             return None
+
+        self._price_cache[cache_key] = {
+            'quote': quote,
+            'timestamp': current_time
+        }
+
+        logger.info(f"[美股实时] {symbol} {quote.name}: 价格=${quote.price:.2f}, "
+                   f"涨跌={quote.change_pct:.2f}%")
+        return quote
+
+    def _fetch_alpha_vantage_quote(self, symbol: str, stock_code: str) -> USRealtimeQuote:
+        if not self.alpha_vantage_key:
+            raise DataFetchError("未配置Alpha Vantage API Key")
+
+        import requests
+
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": symbol,
+            "apikey": self.alpha_vantage_key,
+        }
+        response = requests.get("https://www.alphavantage.co/query", params=params, timeout=10)
+        data = response.json()
+        quote_data = data.get("Global Quote") or {}
+
+        if not quote_data:
+            raise DataFetchError("Alpha Vantage未返回实时行情")
+
+        price = float(quote_data.get("05. price", 0) or 0)
+        change_amount = float(quote_data.get("09. change", 0) or 0)
+        change_pct_str = str(quote_data.get("10. change percent", "0"))
+        change_pct = float(change_pct_str.replace("%", "") or 0)
+        volume = int(float(quote_data.get("06. volume", 0) or 0))
+
+        return USRealtimeQuote(
+            code=stock_code,
+            name=symbol,
+            price=price,
+            change_pct=change_pct,
+            change_amount=change_amount,
+            volume=volume,
+            avg_volume=0,
+            volume_ratio=0.0,
+            pe_ratio=0.0,
+            eps=0.0,
+            market_cap=0.0,
+            dividend_yield=0.0,
+            day_high=float(quote_data.get("03. high", 0) or 0),
+            day_low=float(quote_data.get("04. low", 0) or 0),
+            week_52_high=0.0,
+            week_52_low=0.0,
+        )
+
+    def _fetch_yahoo_realtime_quote(self, symbol: str, stock_code: str) -> Optional[USRealtimeQuote]:
+        import yfinance as yf
+
+        ticker = yf.Ticker(symbol)
+        info = {}
+        try:
+            info = ticker.fast_info or {}
+        except Exception:
+            info = {}
+        if not info:
+            info = ticker.info or {}
+
+        price = info.get('last_price') or info.get('regularMarketPrice') or info.get('currentPrice') or 0
+        prev_close = info.get('previous_close') or info.get('regularMarketPreviousClose') or 0
+        change_amount = info.get('regularMarketChange')
+        if change_amount is None and prev_close:
+            change_amount = price - prev_close
+        change_pct = info.get('regularMarketChangePercent')
+        if change_pct is None and prev_close:
+            change_pct = (price - prev_close) / prev_close * 100
+
+        volume = info.get('last_volume') or info.get('regularMarketVolume') or 0
+        avg_volume = info.get('ten_day_average_volume') or info.get('averageVolume') or 0
+        volume_ratio = (volume / avg_volume) if avg_volume else 0
+
+        dividend_yield = info.get('dividend_yield') or info.get('dividendYield') or 0
+        if dividend_yield and dividend_yield <= 1:
+            dividend_yield = dividend_yield * 100
+
+        return USRealtimeQuote(
+            code=stock_code,
+            name=info.get('shortName') or info.get('longName') or symbol,
+            price=float(price or 0),
+            change_pct=float(change_pct or 0),
+            change_amount=float(change_amount or 0),
+            pre_market_price=float(info.get('preMarketPrice', 0) or 0),
+            pre_market_change=float(info.get('preMarketChangePercent', 0) or 0),
+            after_market_price=float(info.get('postMarketPrice', 0) or 0),
+            after_market_change=float(info.get('postMarketChangePercent', 0) or 0),
+            volume=int(volume or 0),
+            avg_volume=int(avg_volume or 0),
+            volume_ratio=float(volume_ratio or 0),
+            pe_ratio=float(info.get('pe_ratio') or info.get('trailingPE') or 0),
+            eps=float(info.get('eps') or info.get('trailingEps') or 0),
+            market_cap=float(info.get('market_cap') or info.get('marketCap') or 0),
+            dividend_yield=float(dividend_yield or 0),
+            day_high=float(info.get('day_high') or info.get('regularMarketDayHigh') or 0),
+            day_low=float(info.get('day_low') or info.get('regularMarketDayLow') or 0),
+            week_52_high=float(info.get('week_52_high') or info.get('fiftyTwoWeekHigh') or 0),
+            week_52_low=float(info.get('week_52_low') or info.get('fiftyTwoWeekLow') or 0),
+        )
     
     def get_earnings_info(self, stock_code: str) -> Optional[EarningsInfo]:
         """
