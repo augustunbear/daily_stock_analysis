@@ -12,7 +12,7 @@ jobs:
       - name: Convert companies JSON to semicolon string
         id: companies
         run: |
-          COMPANIES=$(echo '${{ toJson(github.event.client_payload.companies) }}' | jq -r 'join(";")')
+          COMPANIES=$(echo '${{ toJson(github.event.client_payload.companies) }}' | jq -r 'join(",")')
           echo "companies=$COMPANIES" >> $GITHUB_OUTPUT
 
       - name: 检出代码
