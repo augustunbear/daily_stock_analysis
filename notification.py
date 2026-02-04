@@ -718,6 +718,41 @@ class NotificationService:
                         f"**筹码**: 获利比例 {chip_data.get('profit_ratio', 'N/A')} | 平均成本 {chip_data.get('avg_cost', 'N/A')} | 集中度 {chip_data.get('concentration', 'N/A')} {chip_emoji}{chip_health}",
                         "",
                     ])
+
+                factor_score = getattr(result, 'factor_scores', None)
+                if factor_score:
+                    scores = factor_score.get('scores', {})
+                    signals = factor_score.get('signals', {})
+                    order = factor_score.get('order') or list(scores.keys())
+                    label_map = {
+                        'size': '市值',
+                        'value': '价值',
+                        'trend': '趋势',
+                        'momentum': '动量',
+                        'volume': '量价',
+                        'low_volatility': '低波动',
+                        'quality': '质量',
+                        'profitability': '盈利',
+                        'investment': '投资',
+                        'liquidity': '流动性',
+                        'dividend_yield': '股息',
+                        'earnings_revisions': '业绩修正',
+                        'valuation': '估值',
+                        'chip': '筹码',
+                        'risk': '风险',
+                    }
+                    rows = [
+                        "| 因子 | 分数 | 信号 |",
+                        "|------|------|------|",
+                        f"| 总分 | {factor_score.get('total_score', 'N/A')} | {signals.get('overall', 'N/A')} |",
+                    ]
+                    for key in order:
+                        if key not in scores:
+                            continue
+                        label = label_map.get(key, key)
+                        rows.append(f"| {label} | {scores.get(key, 'N/A')} | {signals.get(key, 'N/A')} |")
+                    report_lines.extend(rows)
+                    report_lines.append("")
             
             # 舆情情报已移至顶部显示
             

@@ -448,6 +448,39 @@ OPENAI_BASE_URL=https://api.deepseek.com/v1
 OPENAI_MODEL=deepseek-chat
 ```
 
+### 因子打分系统
+
+系统内置可解释的因子评分，覆盖业内最常见的 10 个因子维度，
+该评分不会替代 AI 结论，而是作为额外的量化参考。
+
+默认因子清单：
+- 市值（Size）
+- 价值（Value）
+- 动量（Momentum）
+- 低波动（Low Volatility）
+- 质量（Quality）
+- 盈利（Profitability）
+- 投资（Investment）
+- 流动性（Liquidity）
+- 股息（Dividend Yield）
+- 业绩修正（Earnings Revisions）
+
+数据来源与字段：
+- A股：`EfinanceFetcher.get_base_info()`（ROE/净利率/毛利率/资产负债率/股息率/每股收益等）
+- 美欧：Yahoo Finance 实时信息（ROE/利润率/毛利率/负债权益比/股息率/营收增速等）
+- 美欧：Yahoo Finance 财报日历/EPS 预期与实际（用于业绩修正因子）
+
+缺失处理：
+- 单个因子缺字段时会被自动跳过，不影响总分
+
+默认输出：
+- 因子总分（0-100）
+- 分项得分与信号（bullish/neutral/bearish）
+
+自定义方式：
+- 编辑 `factor_scoring.py` 中的权重与规则
+- 如需扩展新因子，可通过 `FactorScorer.add_factor` 注册
+
 ### 调试模式
 
 ```bash

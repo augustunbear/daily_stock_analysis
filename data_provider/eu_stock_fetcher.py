@@ -61,6 +61,17 @@ class EURealtimeQuote:
     market_cap: float = 0.0       # 市值（本地货币）
     market_cap_usd: float = 0.0   # 市值（美元）
     dividend_yield: float = 0.0   # 股息率
+
+    # 基本面指标
+    roe: float = 0.0              # ROE
+    profit_margin: float = 0.0    # 净利率
+    operating_margin: float = 0.0 # 营业利润率
+    gross_margin: float = 0.0     # 毛利率
+    debt_to_equity: float = 0.0   # 负债权益比
+    forward_eps: float = 0.0      # 预期 EPS
+    trailing_eps: float = 0.0     # 滚动 EPS
+    earnings_growth: float = 0.0  # 利润增长率
+    revenue_growth: float = 0.0   # 营收增长率
     
     # 技术指标
     day_high: float = 0.0         # 日最高
@@ -90,6 +101,15 @@ class EURealtimeQuote:
             'market_cap': self.market_cap,
             'market_cap_usd': self.market_cap_usd,
             'dividend_yield': self.dividend_yield,
+            'roe': self.roe,
+            'profit_margin': self.profit_margin,
+            'operating_margin': self.operating_margin,
+            'gross_margin': self.gross_margin,
+            'debt_to_equity': self.debt_to_equity,
+            'forward_eps': self.forward_eps,
+            'trailing_eps': self.trailing_eps,
+            'earnings_growth': self.earnings_growth,
+            'revenue_growth': self.revenue_growth,
             'day_high': self.day_high,
             'day_low': self.day_low,
             'week_52_high': self.week_52_high,
@@ -97,6 +117,28 @@ class EURealtimeQuote:
             'sector': self.sector,
             'country': self.country,
             'regulatory_info': self.regulatory_info,
+        }
+
+
+@dataclass
+class EUEarningsInfo:
+    """欧洲财报信息"""
+
+    code: str
+    earnings_date: Optional[str] = None
+    eps_estimate: float = 0.0
+    eps_actual: float = 0.0
+    revenue_estimate: float = 0.0
+    revenue_actual: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'code': self.code,
+            'earnings_date': self.earnings_date,
+            'eps_estimate': self.eps_estimate,
+            'eps_actual': self.eps_actual,
+            'revenue_estimate': self.revenue_estimate,
+            'revenue_actual': self.revenue_actual,
         }
 
 
@@ -533,6 +575,15 @@ class EUStockFetcher(BaseFetcher):
             market_cap=market_cap_local,
             market_cap_usd=market_cap_local / currency_usd_rate if currency_usd_rate else 0.0,
             dividend_yield=float(dividend_yield or 0),
+            roe=float(info.get('returnOnEquity') or 0),
+            profit_margin=float(info.get('profitMargins') or 0),
+            operating_margin=float(info.get('operatingMargins') or 0),
+            gross_margin=float(info.get('grossMargins') or 0),
+            debt_to_equity=float(info.get('debtToEquity') or 0),
+            forward_eps=float(info.get('forwardEps') or 0),
+            trailing_eps=float(info.get('trailingEps') or info.get('trailingEPS') or 0),
+            earnings_growth=float(info.get('earningsGrowth') or 0),
+            revenue_growth=float(info.get('revenueGrowth') or 0),
             day_high=float(info.get('day_high') or info.get('regularMarketDayHigh') or 0),
             day_low=float(info.get('day_low') or info.get('regularMarketDayLow') or 0),
             week_52_high=float(info.get('week_52_high') or info.get('fiftyTwoWeekHigh') or 0),
@@ -572,6 +623,77 @@ class EUStockFetcher(BaseFetcher):
         result['realtime_quote'] = self.get_realtime_quote(stock_code)
         
         return result
+
+    def get_earnings_info(self, stock_code: str) -> Optional[EUEarningsInfo]:
+        """
+        获取财报信息
+
+        Args:
+            stock_code: 欧洲股票代码
+
+        Returns:
+            EUEarningsInfo对象
+        """
+        if not self._supports_market(stock_code):
+            return None
+
+        symbol = self._get_yahoo_symbol(stock_code)
+
+        try:
+            import yfinance as yf
+        except Exception as exc:
+            logger.warning(f"yfinance 未安装，无法获取财报信息: {exc}")
+            return None
+
+        try:
+            ticker = yf.Ticker(symbol)
+            earnings_date = None
+            eps_estimate = 0.0
+            eps_actual = 0.0
+            revenue_estimate = 0.0
+            revenue_actual = 0.0
+
+            try:
+                calendar = ticker.calendar
+                if calendar is not None and not calendar.empty:
+                    if 'Earnings Date' in calendar.index:
+                        earnings_date = str(calendar.loc['Earnings Date'][0])
+                    if 'Earnings Estimate' in calendar.index:
+                        eps_estimate = float(calendar.loc['Earnings Estimate'][0] or 0)
+                    if 'Earnings Average' in calendar.index and not eps_estimate:
+                        eps_estimate = float(calendar.loc['Earnings Average'][0] or 0)
+                    if 'Revenue Estimate' in calendar.index:
+                        revenue_estimate = float(calendar.loc['Revenue Estimate'][0] or 0)
+            except Exception:
+                pass
+
+            try:
+                earnings = ticker.earnings_history
+                if earnings is not None and not earnings.empty:
+                    latest = earnings.iloc[-1]
+                    eps_actual = float(latest.get('epsActual', 0) or 0)
+                    if not eps_estimate:
+                        eps_estimate = float(latest.get('epsEstimate', 0) or 0)
+                    revenue_actual = float(latest.get('revenueActual', 0) or 0)
+                    if not revenue_estimate:
+                        revenue_estimate = float(latest.get('revenueEstimate', 0) or 0)
+            except Exception:
+                pass
+
+            if not any([eps_estimate, eps_actual, revenue_estimate, revenue_actual, earnings_date]):
+                return None
+
+            return EUEarningsInfo(
+                code=stock_code,
+                earnings_date=earnings_date,
+                eps_estimate=eps_estimate,
+                eps_actual=eps_actual,
+                revenue_estimate=revenue_estimate,
+                revenue_actual=revenue_actual,
+            )
+        except Exception as exc:
+            logger.warning(f"获取欧洲财报信息失败: {exc}")
+            return None
     
     def get_market_indices(self, market: Market) -> List[Dict[str, str]]:
         """

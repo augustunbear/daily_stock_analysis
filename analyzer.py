@@ -113,6 +113,7 @@ class AnalysisResult:
     data_sources: str = ""  # 数据来源说明
     success: bool = True
     error_message: Optional[str] = None
+    factor_scores: Optional[Dict[str, Any]] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -144,6 +145,7 @@ class AnalysisResult:
             'search_performed': self.search_performed,
             'success': self.success,
             'error_message': self.error_message,
+            'factor_scores': self.factor_scores,
         }
     
     def get_core_conclusion(self) -> str:
@@ -804,6 +806,11 @@ Returns:
             # 解析响应
             result = self._parse_response(response_text, code, name)
             self._inject_reliable_price_data(result, context)
+            result.factor_scores = context.get('factor_score')
+            if result.factor_scores:
+                if result.dashboard is None:
+                    result.dashboard = {}
+                result.dashboard.setdefault('factor_score', result.factor_scores)
             result.raw_response = response_text
             result.search_performed = bool(news_context)
             
@@ -1068,6 +1075,42 @@ Returns:
 
 **风险因素**：
 {chr(10).join('- ' + r for r in trend.get('risk_factors', ['无'])) if trend.get('risk_factors') else '- 无'}
+"""
+
+        factor_score = context.get('factor_score')
+        if factor_score:
+            scores = factor_score.get('scores', {})
+            signals = factor_score.get('signals', {})
+            order = factor_score.get('order') or list(scores.keys())
+            label_map = {
+                'size': '市值',
+                'value': '价值',
+                'trend': '趋势',
+                'momentum': '动量',
+                'volume': '量价',
+                'low_volatility': '低波动',
+                'quality': '质量',
+                'profitability': '盈利',
+                'investment': '投资',
+                'liquidity': '流动性',
+                'dividend_yield': '股息',
+                'earnings_revisions': '业绩修正',
+                'valuation': '估值',
+                'chip': '筹码',
+                'risk': '风险',
+            }
+            rows = []
+            for key in order:
+                if key not in scores:
+                    continue
+                label = label_map.get(key, key)
+                rows.append(f"| {label} | {scores.get(key, 'N/A')} | {signals.get(key, 'N/A')} |")
+            prompt += f"""
+### 因子评分
+| 项目 | 分数 | 信号 |
+|------|------|------|
+| 总分 | {factor_score.get('total_score', 'N/A')} | {signals.get('overall', 'N/A')} |
+{chr(10).join(rows)}
 """
         
         # 添加昨日对比数据

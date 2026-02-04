@@ -63,6 +63,10 @@ except ImportError:
     RealtimeQuote = None
     ChipDistribution = None
 try:
+    from data_provider.efinance_fetcher import EfinanceFetcher
+except ImportError:
+    EfinanceFetcher = None
+try:
     from data_provider.us_stock_fetcher import USStockFetcher
     from data_provider.eu_stock_fetcher import EUStockFetcher
 except ImportError:
@@ -76,6 +80,7 @@ from enums import ReportType
 from stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from market_analyzer import MarketAnalyzer
 from market_types import resolve_stock_alias, Market
+from factor_scoring import get_factor_scorer
 
 # 配置日志格式
 LOG_FORMAT = '%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s'
@@ -187,6 +192,7 @@ class StockAnalysisPipeline:
         self.db = get_db()
         self.fetcher_manager = DataFetcherManager()
         self.akshare_fetcher = AkshareFetcher() if AkshareFetcher else None  # A股增强数据
+        self.efinance_fetcher = EfinanceFetcher() if EfinanceFetcher else None  # A股基本面
         self.us_stock_fetcher = USStockFetcher(self.config.alpha_vantage_key) if USStockFetcher else None
         self.eu_stock_fetcher = EUStockFetcher(self.config.alpha_vantage_key) if EUStockFetcher else None
         self.trend_analyzer = StockTrendAnalyzer()  # 趋势分析器
@@ -318,6 +324,33 @@ class StockAnalysisPipeline:
                                   f"90%集中度={chip_data.concentration_90:.2%}")
                 except Exception as e:
                     logger.warning(f"[{code}] 获取筹码分布失败: {e}")
+
+            # Step 2.5: 获取基本面/财报数据（用于因子评分）
+            base_info = None
+            earnings_info = None
+            if market == Market.CHINA_A and self.efinance_fetcher:
+                try:
+                    base_info = self.efinance_fetcher.get_base_info(code)
+                    if base_info:
+                        logger.info(f"[{code}] 基本面数据获取成功")
+                except Exception as e:
+                    logger.warning(f"[{code}] 获取基本面数据失败: {e}")
+
+            if market in [Market.US_NYSE, Market.US_NASDAQ, Market.US_AMEX] and self.us_stock_fetcher:
+                try:
+                    earnings_info = self.us_stock_fetcher.get_earnings_info(code)
+                    if earnings_info:
+                        logger.info(f"[{code}] 财报预期获取成功: EPS预期={earnings_info.eps_estimate}")
+                except Exception as e:
+                    logger.warning(f"[{code}] 获取财报预期失败: {e}")
+
+            if market in [Market.UK_LSE, Market.GER_XETRA, Market.FRA_EURONEXT, Market.SWX_SIX, Market.EURONEXT] and self.eu_stock_fetcher:
+                try:
+                    earnings_info = self.eu_stock_fetcher.get_earnings_info(code)
+                    if earnings_info:
+                        logger.info(f"[{code}] 财报预期获取成功: EPS预期={earnings_info.eps_estimate}")
+                except Exception as e:
+                    logger.warning(f"[{code}] 获取财报预期失败: {e}")
             
             # Step 3: 趋势分析（基于交易理念）
             trend_result: Optional[TrendAnalysisResult] = None
@@ -371,7 +404,9 @@ class StockAnalysisPipeline:
                 realtime_quote, 
                 chip_data, 
                 trend_result,
-                stock_name  # 传入股票名称
+                stock_name,  # 传入股票名称
+                base_info,
+                earnings_info,
             )
             
             # Step 7: 调用 AI 分析（传入增强的上下文和新闻）
@@ -390,7 +425,9 @@ class StockAnalysisPipeline:
         realtime_quote: Optional[Any],
         chip_data: Optional[Any],
         trend_result: Optional[TrendAnalysisResult],
-        stock_name: str = ""
+        stock_name: str = "",
+        base_info: Optional[Dict[str, Any]] = None,
+        earnings_info: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         增强分析上下文
@@ -437,6 +474,16 @@ class StockAnalysisPipeline:
                 'total_mv': total_mv,
                 'circ_mv': circ_mv,
                 'change_60d': getattr(realtime_quote, 'change_60d', None),
+                'dividend_yield': getattr(realtime_quote, 'dividend_yield', None),
+                'roe': getattr(realtime_quote, 'roe', None),
+                'profit_margin': getattr(realtime_quote, 'profit_margin', None),
+                'operating_margin': getattr(realtime_quote, 'operating_margin', None),
+                'gross_margin': getattr(realtime_quote, 'gross_margin', None),
+                'debt_to_equity': getattr(realtime_quote, 'debt_to_equity', None),
+                'forward_eps': getattr(realtime_quote, 'forward_eps', None),
+                'trailing_eps': getattr(realtime_quote, 'trailing_eps', None),
+                'earnings_growth': getattr(realtime_quote, 'earnings_growth', None),
+                'revenue_growth': getattr(realtime_quote, 'revenue_growth', None),
             }
         
         # 添加筹码分布
@@ -465,7 +512,48 @@ class StockAnalysisPipeline:
                 'signal_reasons': trend_result.signal_reasons,
                 'risk_factors': trend_result.risk_factors,
             }
-        
+
+        fundamentals = {}
+        if realtime_quote:
+            for key in [
+                'roe',
+                'profit_margin',
+                'operating_margin',
+                'gross_margin',
+                'debt_to_equity',
+                'forward_eps',
+                'trailing_eps',
+                'earnings_growth',
+                'revenue_growth',
+                'dividend_yield',
+            ]:
+                value = getattr(realtime_quote, key, None)
+                if value not in (None, 0, 0.0):
+                    fundamentals[key] = value
+            eps_value = getattr(realtime_quote, 'eps', None)
+            if eps_value not in (None, 0, 0.0) and 'trailing_eps' not in fundamentals:
+                fundamentals['trailing_eps'] = eps_value
+
+        if base_info:
+            fundamentals.update(self._normalize_fundamentals(base_info))
+
+        if earnings_info:
+            eps_est = getattr(earnings_info, 'eps_estimate', None)
+            eps_act = getattr(earnings_info, 'eps_actual', None)
+            if eps_est not in (None, 0, 0.0):
+                fundamentals['eps_estimate'] = eps_est
+            if eps_act not in (None, 0, 0.0):
+                fundamentals['eps_actual'] = eps_act
+
+        if fundamentals:
+            enhanced['fundamentals'] = fundamentals
+
+        try:
+            scorer = get_factor_scorer()
+            enhanced['factor_score'] = scorer.score(enhanced)
+        except Exception as exc:
+            logger.warning(f"因子评分计算失败: {exc}")
+
         return enhanced
     
     def _describe_volume_ratio(self, volume_ratio: float) -> str:
@@ -486,6 +574,62 @@ class StockAnalysisPipeline:
             return "明显放量"
         else:
             return "巨量"
+
+    def _normalize_fundamentals(self, info: Dict[str, Any]) -> Dict[str, Any]:
+        normalized: Dict[str, Any] = {}
+
+        def _pick(keys: List[str]) -> Optional[Any]:
+            for key in keys:
+                if key in info:
+                    value = info.get(key)
+                    if value not in (None, "", "--", "-", "N/A"):
+                        return value
+            return None
+
+        def _percent(value: Any) -> Optional[float]:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                cleaned = value.replace('%', '').strip()
+                if not cleaned:
+                    return None
+                value = cleaned
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return None
+            if abs(numeric) <= 1:
+                numeric *= 100
+            return numeric
+
+        def _set_percent(key: str, raw: Any) -> None:
+            value = _percent(raw)
+            if value is not None:
+                normalized[key] = value
+
+        def _set_value(key: str, raw: Any) -> None:
+            try:
+                if raw is None:
+                    return
+                value = float(raw)
+            except (TypeError, ValueError):
+                return
+            normalized[key] = value
+
+        _set_percent('roe', _pick(['ROE', 'ROE(%)', '净资产收益率', '净资产收益率(%)', 'returnOnEquity']))
+        _set_percent('profit_margin', _pick(['净利率', '净利率(%)', '净利润率', 'profitMargin', 'profitMargins']))
+        _set_percent('operating_margin', _pick(['营业利润率', '营业利润率(%)', 'operatingMargins']))
+        _set_percent('gross_margin', _pick(['毛利率', '毛利率(%)', 'grossMargins']))
+        _set_percent('debt_to_equity', _pick(['资产负债率', '负债率', 'debtToEquity']))
+        _set_percent('dividend_yield', _pick(['股息率', '股息率(%)', 'dividendYield']))
+        _set_percent('earnings_growth', _pick(['净利润增长率', 'profitGrowth', 'earningsGrowth']))
+        _set_percent('revenue_growth', _pick(['营业收入增长率', 'revenueGrowth']))
+        _set_percent('asset_growth', _pick(['总资产增长率', '资产增长率', 'assetGrowth']))
+
+        _set_value('trailing_eps', _pick(['每股收益', 'EPS', 'eps', 'trailingEps', 'trailingEPS']))
+        _set_value('forward_eps', _pick(['预期每股收益', 'forwardEps']))
+
+        return normalized
     
     def process_single_stock(
         self, 

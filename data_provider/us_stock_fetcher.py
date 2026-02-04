@@ -64,6 +64,17 @@ class USRealtimeQuote:
     eps: float = 0.0             # 每股收益(TTM)
     market_cap: float = 0.0       # 市值
     dividend_yield: float = 0.0   # 股息率
+
+    # 基本面指标
+    roe: float = 0.0              # ROE
+    profit_margin: float = 0.0    # 净利率
+    operating_margin: float = 0.0 # 营业利润率
+    gross_margin: float = 0.0     # 毛利率
+    debt_to_equity: float = 0.0   # 负债权益比
+    forward_eps: float = 0.0      # 预期 EPS
+    trailing_eps: float = 0.0     # 滚动 EPS
+    earnings_growth: float = 0.0  # 利润增长率
+    revenue_growth: float = 0.0   # 营收增长率
     
     # 技术指标
     day_high: float = 0.0         # 日最高
@@ -90,6 +101,15 @@ class USRealtimeQuote:
             'eps': self.eps,
             'market_cap': self.market_cap,
             'dividend_yield': self.dividend_yield,
+            'roe': self.roe,
+            'profit_margin': self.profit_margin,
+            'operating_margin': self.operating_margin,
+            'gross_margin': self.gross_margin,
+            'debt_to_equity': self.debt_to_equity,
+            'forward_eps': self.forward_eps,
+            'trailing_eps': self.trailing_eps,
+            'earnings_growth': self.earnings_growth,
+            'revenue_growth': self.revenue_growth,
             'day_high': self.day_high,
             'day_low': self.day_low,
             'week_52_high': self.week_52_high,
@@ -466,6 +486,15 @@ class USStockFetcher(BaseFetcher):
             eps=float(info.get('eps') or info.get('trailingEps') or 0),
             market_cap=float(info.get('market_cap') or info.get('marketCap') or 0),
             dividend_yield=float(dividend_yield or 0),
+            roe=float(info.get('returnOnEquity') or 0),
+            profit_margin=float(info.get('profitMargins') or 0),
+            operating_margin=float(info.get('operatingMargins') or 0),
+            gross_margin=float(info.get('grossMargins') or 0),
+            debt_to_equity=float(info.get('debtToEquity') or 0),
+            forward_eps=float(info.get('forwardEps') or 0),
+            trailing_eps=float(info.get('trailingEps') or info.get('trailingEPS') or 0),
+            earnings_growth=float(info.get('earningsGrowth') or 0),
+            revenue_growth=float(info.get('revenueGrowth') or 0),
             day_high=float(info.get('day_high') or info.get('regularMarketDayHigh') or 0),
             day_low=float(info.get('day_low') or info.get('regularMarketDayLow') or 0),
             week_52_high=float(info.get('week_52_high') or info.get('fiftyTwoWeekHigh') or 0),

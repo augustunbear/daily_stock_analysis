@@ -18,6 +18,7 @@
 - **💶 统一币种显示** - 技术分析报告中除人民币外一律按当前汇率换算为欧元
 - **智能市场路由** - 自动识别股票代码所属市场，选择最优数据源
 - **多维度分析** - 技术面 + 筹码分布 + 舆情情报 + 实时行情 + 财报数据
+- **因子打分系统** - 覆盖市值/价值/动量/低波动/质量/盈利/投资/流动性/股息/业绩修正等主流因子
 - **大盘复盘** - 每日市场概览、板块涨跌、北向资金、全球指数联动
 - **多渠道推送** - 支持企业微信、飞书、Telegram、邮件（自动识别）
 - **☁️ 云端归档** - 报告与原始数据可自动保存到 Cloudflare R2（可选）
@@ -29,6 +30,7 @@
 - **中国股市**: AkShare、Tushare、Efinance、Baostock
 - **美国股市**: Yahoo Finance、Alpha Vantage（含盘前盘后数据）
 - **欧洲股市**: Yahoo Finance、Alpha Vantage（支持伦敦、法兰克福、巴黎等交易所）
+- **基本面/财报**: Efinance、Yahoo Finance（ROE/利润率/股息率/EPS 预期等，覆盖美欧财报日历）
 - **新闻搜索**: Tavily、SerpAPI、Bocha
 - **AI 分析**: 
   - 主力：Google Gemini（gemini-3-flash-preview）—— [免费获取](https://aistudio.google.com/)
@@ -204,6 +206,7 @@
 daily_stock_analysis/
 ├── main.py              # 主程序入口
 ├── analyzer.py          # AI 分析器（Gemini）
+├── factor_scoring.py    # 因子打分系统
 ├── market_analyzer.py   # 大盘复盘分析
 ├── search_service.py    # 新闻搜索服务
 ├── notification.py      # 消息推送
