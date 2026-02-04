@@ -13,7 +13,7 @@ jobs:
       - name: Convert companies JSON to semicolon string
         id: companies
         run: |
-          COMPANIES=${{ github.event.issue.title }}"
+          COMPANIES=${{ github.event.issue.title }}
           echo "companies=$COMPANIES" >> $GITHUB_OUTPUT
 
       - name: 检出代码
