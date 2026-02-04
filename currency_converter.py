@@ -114,14 +114,14 @@ class ExchangeRateProvider:
 
 
 class CurrencyConverter:
-    """货币转换器 - 中国股票用人民币，其他地区用欧元显示"""
+    """货币转换器 - 人民币仅限A股，其余统一欧元显示"""
     
     def __init__(self):
         self.provider = ExchangeRateProvider()
         self.rates = self.provider.get_rates()
         self.target_currencies = {
             'CN_A': 'CNY',      # 中国A股用人民币
-            'HK': 'CNY',         # 港股也用人民币（便于对比）
+            'HK': 'EUR',         # 港股统一换算为欧元
             'US_NYSE': 'EUR',    # 美股用欧元
             'US_NASDAQ': 'EUR',  # 美股用欧元
             'US_AMEX': 'EUR',    # 美股用欧元

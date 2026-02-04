@@ -845,6 +845,7 @@ Returns:
         market = Market.from_stock_code(result.code)
         original_currency = market.get_currency()
         converter = get_currency_converter()
+        target_currency = converter.get_target_currency(market.value)
 
         def _format_price(value: Any) -> Optional[str]:
             if value is None:
@@ -853,7 +854,7 @@ Returns:
                 numeric = float(value)
             except (TypeError, ValueError):
                 return None
-            return converter.format_amount(numeric, original_currency, original_currency)
+            return converter.format_amount(numeric, original_currency, target_currency)
 
         realtime = context.get('realtime', {})
         today = context.get('today', {})
@@ -943,6 +944,16 @@ Returns:
                     converted_today[field] = converted_price
             else:
                 converted_today[field] = today.get(field)
+
+        converted_ma = {}
+        for field in ['ma5', 'ma10', 'ma20']:
+            if field in today and today[field] is not None:
+                converted_price, _ = converter.convert_amount(
+                    float(today[field]), original_currency, target_currency
+                )
+                converted_ma[field] = converted_price
+            else:
+                converted_ma[field] = today.get(field)
         
         # ========== 构建决策仪表盘格式的输入 ==========
         prompt = f"""# 决策仪表盘分析请求
@@ -973,9 +984,9 @@ Returns:
 ### 均线系统（关键判断指标）
 | 均线 | 数值 | 说明 |
 |------|------|------|
-| MA5 | {today.get('ma5', 'N/A')} | 短期趋势线 |
-| MA10 | {today.get('ma10', 'N/A')} | 中短期趋势线 |
-| MA20 | {today.get('ma20', 'N/A')} | 中期趋势线 |
+| MA5 | {converted_ma.get('ma5', 'N/A')} {price_unit} | 短期趋势线 |
+| MA10 | {converted_ma.get('ma10', 'N/A')} {price_unit} | 中短期趋势线 |
+| MA20 | {converted_ma.get('ma20', 'N/A')} {price_unit} | 中期趋势线 |
 | 均线形态 | {context.get('ma_status', '未知')} | 多头/空头/缠绕 |
 """
         
