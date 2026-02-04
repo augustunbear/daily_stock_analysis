@@ -90,6 +90,7 @@
 | Secret 名称 | 说明 | 必填 |
 |------------|------|:----:|
 | `STOCK_LIST` | 自选股代码（支持中美欧混合），如 `600519,AAPL,VOD.L,TSLA` | ✅ |
+| `CURRENCY_DISPLAY_RULE` | 显示规则：A股保留人民币，其它市场按当前汇率统一换算为欧元（无需配置，默认生效） | - |
 | `TAVILY_API_KEYS` | [Tavily](https://tavily.com/) 搜索 API（新闻搜索） | 推荐 |
 | `BOCHA_API_KEYS` | [博查搜索](https://open.bocha.cn/) Web Search API（中文搜索优化，支持AI摘要，多个key用逗号分隔） | 可选 |
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/) 备用搜索 | 可选 |
@@ -128,6 +129,11 @@
 🟢 买入 | 贵州茅台(600519)
 📌 缩量回踩MA5支撑，乖离率1.2%处于最佳买点
 💰 狙击: 买入1800 | 止损1750 | 目标1900
+✅多头排列 ✅乖离安全 ✅量能配合
+
+🟢 买入 | 苹果(AAPL)
+📌 回踩MA10后放量企稳，趋势保持多头
+💰 狙击: 买入190.50 EUR | 止损184.00 EUR | 目标205.00 EUR
 ✅多头排列 ✅乖离安全 ✅量能配合
 
 🟡 观望 | 宁德时代(300750)
