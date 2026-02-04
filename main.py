@@ -742,9 +742,10 @@ class StockAnalysisPipeline:
                         non_wechat_success = self.notifier.send_to_telegram(report) or non_wechat_success
                     elif channel == NotificationChannel.EMAIL:
                         # 为邮件生成包含统计信息的标题
-                        buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
-                        sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
-                        hold_count = sum(1 for r in results if r.operation_advice in ['持有', '观望'])
+                        counts = self.notifier.get_signal_counts(results)
+                        buy_count = counts['buy']
+                        hold_count = counts['hold']
+                        sell_count = counts['sell']
                         date_str = datetime.now().strftime('%Y-%m-%d')
                         subject = f"📈 股市分析报告 - {date_str} | 共{len(results)}只 | 🟢买入:{buy_count} 🟡观望:{hold_count} 🔴卖出:{sell_count}"
                         non_wechat_success = self.notifier.send_to_email(report, subject) or non_wechat_success

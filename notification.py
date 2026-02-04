@@ -339,9 +339,10 @@ class NotificationService:
         )
         
         # 统计信息
-        buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
-        sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
-        hold_count = sum(1 for r in results if r.operation_advice in ['持有', '观望'])
+        counts = self._summarize_signal_counts(results)
+        buy_count = counts['buy']
+        hold_count = counts['hold']
+        sell_count = counts['sell']
         avg_score = sum(r.sentiment_score for r in results) / len(results) if results else 0
         
         report_lines.extend([
@@ -520,6 +521,31 @@ class NotificationService:
             return ('卖出', '🔴', '卖出')
         else:
             return ('观望', '⚪', '观望')
+
+    def _summarize_signal_counts(self, results: List[AnalysisResult]) -> Dict[str, int]:
+        """汇总买入/观望/卖出数量，确保与总数一致。"""
+        buy_count = 0
+        hold_count = 0
+        sell_count = 0
+        for result in results:
+            signal_text, _, _ = self._get_signal_level(result)
+            if signal_text in ['强烈买入', '买入']:
+                buy_count += 1
+            elif signal_text in ['持有', '观望']:
+                hold_count += 1
+            elif signal_text in ['减仓', '卖出']:
+                sell_count += 1
+            else:
+                hold_count += 1
+        return {
+            'buy': buy_count,
+            'hold': hold_count,
+            'sell': sell_count,
+        }
+
+    def get_signal_counts(self, results: List[AnalysisResult]) -> Dict[str, int]:
+        """对外提供的统计接口。"""
+        return self._summarize_signal_counts(results)
     
     def generate_dashboard_report(
         self, 
@@ -545,9 +571,10 @@ class NotificationService:
         sorted_results = sorted(results, key=lambda x: x.sentiment_score, reverse=True)
         
         # 统计信息
-        buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
-        sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
-        hold_count = sum(1 for r in results if r.operation_advice in ['持有', '观望'])
+        counts = self._summarize_signal_counts(results)
+        buy_count = counts['buy']
+        hold_count = counts['hold']
+        sell_count = counts['sell']
         
         report_lines = [
             f"# 🎯 {report_date} 决策仪表盘",
@@ -805,9 +832,10 @@ class NotificationService:
         sorted_results = sorted(results, key=lambda x: x.sentiment_score, reverse=True)
         
         # 统计
-        buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
-        sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
-        hold_count = sum(1 for r in results if r.operation_advice in ['持有', '观望'])
+        counts = self._summarize_signal_counts(results)
+        buy_count = counts['buy']
+        hold_count = counts['hold']
+        sell_count = counts['sell']
         
         lines = [
             f"## 🎯 {report_date} 决策仪表盘",
@@ -938,9 +966,10 @@ class NotificationService:
         sorted_results = sorted(results, key=lambda x: x.sentiment_score, reverse=True)
         
         # 统计
-        buy_count = sum(1 for r in results if r.operation_advice in ['买入', '加仓', '强烈买入'])
-        sell_count = sum(1 for r in results if r.operation_advice in ['卖出', '减仓', '强烈卖出'])
-        hold_count = sum(1 for r in results if r.operation_advice in ['持有', '观望'])
+        counts = self._summarize_signal_counts(results)
+        buy_count = counts['buy']
+        hold_count = counts['hold']
+        sell_count = counts['sell']
         avg_score = sum(r.sentiment_score for r in results) / len(results) if results else 0
         
         lines = [
@@ -1810,6 +1839,8 @@ class NotificationService:
 ---
 
 ## 📈 技术面分析
+
+### 标的：{stock_name} ({result.code})
 
 ### 走势分析
 {result.trend_analysis if result.trend_analysis else '暂无分析'}

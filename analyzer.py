@@ -803,6 +803,7 @@ Returns:
             
             # 解析响应
             result = self._parse_response(response_text, code, name)
+            self._inject_reliable_price_data(result, context)
             result.raw_response = response_text
             result.search_performed = bool(news_context)
             
@@ -824,6 +825,56 @@ Returns:
                 success=False,
                 error_message=str(e),
             )
+
+    def _inject_reliable_price_data(self, result: AnalysisResult, context: Dict[str, Any]) -> None:
+        """
+        使用可靠的行情数据修正仪表盘中的价格字段。
+
+        优先使用实时行情价格，其次使用当日收盘价。
+        """
+        if not result or not context:
+            return
+
+        dashboard = result.dashboard
+        if dashboard is None:
+            return
+
+        data_persp = dashboard.setdefault('data_perspective', {})
+        price_position = data_persp.setdefault('price_position', {})
+
+        market = Market.from_stock_code(result.code)
+        original_currency = market.get_currency()
+        converter = get_currency_converter()
+
+        def _format_price(value: Any) -> Optional[str]:
+            if value is None:
+                return None
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return None
+            return converter.format_amount(numeric, original_currency, original_currency)
+
+        realtime = context.get('realtime', {})
+        today = context.get('today', {})
+
+        current_price = None
+        if isinstance(realtime, dict):
+            current_price = realtime.get('price')
+        if current_price in (None, 0) and isinstance(today, dict):
+            current_price = today.get('close')
+
+        formatted_current = _format_price(current_price)
+        if formatted_current:
+            price_position['current_price'] = formatted_current
+
+        for field in ['ma5', 'ma10', 'ma20']:
+            value = None
+            if isinstance(today, dict):
+                value = today.get(field)
+            formatted = _format_price(value)
+            if formatted:
+                price_position[field] = formatted
     
     def _format_prompt(
         self, 
