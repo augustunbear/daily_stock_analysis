@@ -365,9 +365,10 @@ class NotificationService:
         for result in sorted_results:
             emoji = result.get_emoji()
             confidence_stars = result.get_confidence_stars() if hasattr(result, 'get_confidence_stars') else '⭐⭐'
+            stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
             
             report_lines.extend([
-                f"### {emoji} {result.name} ({result.code})",
+                f"### {emoji} {stock_name} ({result.code})",
                 "",
                 f"**操作建议：{result.operation_advice}** | **综合评分：{result.sentiment_score}分** | **趋势预测：{result.trend_prediction}** | **置信度：{confidence_stars}**",
                 "",
@@ -1017,9 +1018,10 @@ class NotificationService:
         # 每只股票精简信息（控制长度）
         for result in sorted_results:
             emoji = result.get_emoji()
+            stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
             
             # 核心信息行
-            lines.append(f"### {emoji} {result.name}({result.code})")
+            lines.append(f"### {emoji} {stock_name}({result.code})")
             lines.append(f"**{result.operation_advice}** | 评分:{result.sentiment_score} | {result.trend_prediction}")
             
             # 操作理由（截断）

@@ -20,6 +20,7 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional, List, Tuple
+from io import StringIO
 
 import pandas as pd
 import numpy as np
@@ -278,6 +279,14 @@ class DataFetcherManager:
         else:
             # 默认数据源将在首次使用时延迟加载
             self._init_default_fetchers()
+
+        try:
+            from config import get_config
+            from r2_storage import R2Storage
+
+            self._r2_storage = R2Storage.from_config(get_config())
+        except Exception:
+            self._r2_storage = None
     
     def _init_default_fetchers(self) -> None:
         """
@@ -397,6 +406,12 @@ class DataFetcherManager:
             DataFetchError: 所有数据源都失败时抛出
         """
         errors = []
+
+        start_date, end_date = self._resolve_date_range(start_date, end_date, days)
+        cached = self._load_cached_daily_data(stock_code, start_date, end_date)
+        if cached is not None and not cached.empty:
+            logger.info(f"[R2Cache] 命中缓存 {stock_code} {start_date}~{end_date}")
+            return cached, "R2Cache"
         
         for fetcher in self._fetchers:
             try:
@@ -410,6 +425,7 @@ class DataFetcherManager:
                 
                 if df is not None and not df.empty:
                     logger.info(f"[{fetcher.name}] 成功获取 {stock_code}")
+                    self._save_cached_daily_data(stock_code, start_date, end_date, df)
                     return df, fetcher.name
                     
             except Exception as e:
@@ -423,6 +439,62 @@ class DataFetcherManager:
         error_summary = f"所有数据源获取 {stock_code} 失败:\n" + "\n".join(errors)
         logger.error(error_summary)
         raise DataFetchError(error_summary)
+
+    def _resolve_date_range(
+        self,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        days: int,
+    ) -> Tuple[str, str]:
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if start_date is None:
+            from datetime import timedelta
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            start_dt = end_dt - timedelta(days=days * 2)
+            start_date = start_dt.strftime('%Y-%m-%d')
+        return start_date, end_date
+
+    def _build_cache_key(self, stock_code: str, start_date: str, end_date: str) -> str:
+        safe_code = stock_code.replace('/', '_').replace('\\', '_').upper()
+        return f"cache/daily/{safe_code}/{start_date}_{end_date}.csv"
+
+    def _load_cached_daily_data(
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+    ) -> Optional[pd.DataFrame]:
+        if not self._r2_storage:
+            return None
+        key = self._build_cache_key(stock_code, start_date, end_date)
+        content = self._r2_storage.download_text(key)
+        if not content:
+            return None
+        try:
+            df = pd.read_csv(StringIO(content))
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+            return df
+        except Exception as exc:
+            logger.warning(f"R2 缓存解析失败: {key}, {exc}")
+            return None
+
+    def _save_cached_daily_data(
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+        df: pd.DataFrame,
+    ) -> None:
+        if not self._r2_storage:
+            return
+        try:
+            key = self._build_cache_key(stock_code, start_date, end_date)
+            content = df.to_csv(index=False)
+            self._r2_storage.upload_text(content, key, content_type="text/csv; charset=utf-8")
+        except Exception as exc:
+            logger.warning(f"R2 缓存写入失败: {stock_code}, {exc}")
     
     @property
     def available_fetchers(self) -> List[str]:

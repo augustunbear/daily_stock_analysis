@@ -93,6 +93,27 @@ class R2Storage:
             logger.warning(f"R2 上传失败: {e}")
             return None
 
+    def download_text(self, key: str) -> Optional[str]:
+        object_key = self._build_key(key)
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=object_key)
+            body = response.get("Body")
+            if body is None:
+                return None
+            data = body.read()
+            return data.decode("utf-8")
+        except Exception as e:
+            logger.debug(f"R2 下载失败: {object_key}, {e}")
+            return None
+
+    def exists(self, key: str) -> bool:
+        object_key = self._build_key(key)
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=object_key)
+            return True
+        except Exception:
+            return False
+
     def _build_key(self, filename: str) -> str:
         return f"{self.prefix}{filename}" if self.prefix else filename
 

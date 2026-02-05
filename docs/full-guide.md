@@ -491,6 +491,14 @@ python main.py --debug
 - 常规日志：`logs/stock_analysis_YYYYMMDD.log`
 - 调试日志：`logs/stock_analysis_debug_YYYYMMDD.log`
 
+### R2 历史数据缓存
+
+启用 R2 后，系统会自动把历史行情与技术指标（因子输入数据）缓存到 R2，
+后续请求会优先命中缓存，减少重复拉取。
+
+缓存路径示例：
+`cache/daily/<STOCK_CODE>/<START>_<END>.csv`
+
 ---
 
 ## 本地 WebUI 管理界面
