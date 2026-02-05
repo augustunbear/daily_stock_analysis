@@ -1,0 +1,123 @@
+name: Telegram触发股票分析
+
+on:
+  issues:
+    types: [opened]
+  
+jobs:
+  analyze:
+    if: contains(github.event.issue.labels.*.name, 'mobile-trigger')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Convert companies JSON to semicolon string
+        id: companies
+        run: |
+          COMPANIES=${{ github.event.issue.title }}
+          echo "companies=$COMPANIES" >> $GITHUB_OUTPUT
+
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 创建必要目录
+        run: |
+          mkdir -p data logs reports
+      
+      - name: 执行股票分析
+        env:
+          # Gemini AI
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-3-flash-preview' }}
+          GEMINI_MODEL_FALLBACK: ${{ vars.GEMINI_MODEL_FALLBACK || secrets.GEMINI_MODEL_FALLBACK || 'gemini-2.5-flash' }}
+          GEMINI_REQUEST_DELAY: '3.0'  # GitHub Actions 建议增加延时
+          
+          # 数据源 (可选)
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          
+          # 搜索服务
+          BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
+          TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
+          SERPAPI_API_KEYS: ${{ secrets.SERPAPI_API_KEYS }}
+          
+          # OpenAI 兼容 API（备选）
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL }}
+          
+          # 通知渠道（可同时配置多个，全部推送）
+          # 方式一：企业微信
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+          # 方式二：飞书
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          # 方式三：Telegram（需同时配置 Bot Token 和 Chat ID）
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # 方式四：邮件（只需邮箱和授权码，SMTP自动识别）
+          EMAIL_SENDER: ${{ vars.EMAIL_SENDER || secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS || secrets.EMAIL_RECEIVERS }}
+          # 方式五：自定义 Webhook（支持钉钉、Discord、Slack、Bark等，多个用逗号分隔）
+          CUSTOM_WEBHOOK_URLS: ${{ secrets.CUSTOM_WEBHOOK_URLS }}
+          CUSTOM_WEBHOOK_BEARER_TOKEN: ${{ secrets.CUSTOM_WEBHOOK_BEARER_TOKEN }}
+          # 方式六：Discord（支持 Webhook 和 Bot API）
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_MAIN_CHANNEL_ID: ${{ secrets.DISCORD_MAIN_CHANNEL_ID }}
+          # 方式七：飞书文档
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
+
+          
+          # 自选股列表 (从邮件获得)
+          STOCK_LIST: ${{ steps.companies.outputs.companies }} 
+          
+          # 其他配置
+          LOG_LEVEL: INFO
+          DATA_DAYS: 60
+          MAX_CONCURRENT: 3
+        run: |
+          # 判断运行模式
+          MODE="${{ github.event.inputs.mode || 'full' }}"
+          
+          echo "=========================================="
+          echo "运行模式: $MODE"
+          echo "自选股: $STOCK_LIST"
+          echo "时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
+          echo "BOCHA_API_KEYS 是否配置: $([ -n "$BOCHA_API_KEYS" ] && echo '是' || echo '否')"
+          echo "BOCHA_API_KEYS 长度: ${#BOCHA_API_KEYS}"
+          echo "=========================================="
+          
+          python main.py --no-market-review
+      
+      - name: 上传分析报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-reports-${{ github.run_number }}
+          path: |
+            reports/
+            logs/
+          retention-days: 30
+      
+      - name: 显示运行结果
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "分析完成"
+          echo "=========================================="
+          if [ -d "reports" ]; then
+            echo "生成的报告:"
+            ls -la reports/
+          fi
