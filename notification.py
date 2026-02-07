@@ -323,7 +323,7 @@ class NotificationService:
         
         # 标题
         report_lines = [
-            f"# 📅 {report_date} A股自选股智能分析报告",
+            f"# 📅 {report_date} 自选股智能分析报告",
             "",
             f"> 共分析 **{len(results)}** 只股票 | 报告生成时间：{datetime.now().strftime('%H:%M:%S')}",
             "",
