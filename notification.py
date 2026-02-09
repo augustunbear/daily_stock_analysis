@@ -30,7 +30,7 @@ from email.utils import formataddr, formatdate, make_msgid
 import requests
 
 from config import get_config
-from analyzer import AnalysisResult
+from analyzer import AnalysisResult, STOCK_NAME_MAP
 from bot.models import BotMessage
 from currency_converter import get_currency_converter
 from market_types import Market
@@ -547,6 +547,24 @@ class NotificationService:
     def get_signal_counts(self, results: List[AnalysisResult]) -> Dict[str, int]:
         """对外提供的统计接口。"""
         return self._summarize_signal_counts(results)
+
+    def _resolve_stock_name(self, result: AnalysisResult) -> str:
+        name = (result.name or "").strip()
+        if name and not name.startswith('股票'):
+            return name
+        mapped = STOCK_NAME_MAP.get(result.code)
+        if mapped:
+            return mapped
+        return f'股票{result.code}'
+
+    def _resolve_company_full_name(self, result: AnalysisResult) -> str:
+        dashboard = result.dashboard if hasattr(result, 'dashboard') and result.dashboard else {}
+        intelligence = dashboard.get('intelligence', {}) if dashboard else {}
+        for key in ['company_full_name', 'full_name', 'company_name']:
+            value = intelligence.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return self._resolve_stock_name(result)
     
     def generate_dashboard_report(
         self, 
@@ -1072,7 +1090,7 @@ class NotificationService:
         intel = dashboard.get('intelligence', {}) if dashboard else {}
         
         # 股票名称
-        stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+        stock_name = self._resolve_stock_name(result)
         
         lines = [
             f"## {signal_emoji} {stock_name} ({result.code})",
@@ -1802,7 +1820,7 @@ class NotificationService:
             short_conclusion = f" {short_conclusion}"
         
         # 组合标题：[公司名称][简短结论] 评分XX分 股票代码
-        stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+        stock_name = self._resolve_stock_name(result)
         
         subject = f"[{stock_name}][{short_advice}]{short_conclusion} 评分{result.sentiment_score}分 {result.code}"
         
@@ -1836,9 +1854,13 @@ class NotificationService:
         
         # 邮件标题
         signal_emoji = result.get_emoji()
-        stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+        stock_name = self._resolve_stock_name(result)
+        full_name = self._resolve_company_full_name(result)
         
         content = f"""# {signal_emoji} {stock_name} ({result.code}) 股票分析报告
+
+> **股票代码**：{result.code}  
+> **公司全名**：{full_name}
 
 > **分析时间**：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
 > **综合评分**：{result.sentiment_score}/100 分  
@@ -1878,6 +1900,7 @@ class NotificationService:
 ## 📈 技术面分析
 
 ### 标的：{stock_name} ({result.code})
+### 公司全名：{full_name}
 
 ### 走势分析
 {result.trend_analysis if result.trend_analysis else '暂无分析'}
