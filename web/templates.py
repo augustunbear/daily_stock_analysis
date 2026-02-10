@@ -644,12 +644,12 @@ def render_config_page(
     const POLL_INTERVAL_MS = 3000;
     const MAX_TASKS_DISPLAY = 10;
     
-    // 允许输入数字和字母（支持港股 hkxxxxx 格式）
+    // 允许输入数字、字母和点号（支持股票代码 / ISIN / WKN）
     codeInput.addEventListener('input', function(e) {
-        // 转小写，只保留字母和数字
-        this.value = this.value.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (this.value.length > 8) {
-            this.value = this.value.slice(0, 8);
+        // 转小写，只保留字母、数字和点号
+        this.value = this.value.toLowerCase().replace(/[^a-z0-9.]/g, '');
+        if (this.value.length > 16) {
+            this.value = this.value.slice(0, 16);
         }
         updateButtonState();
     });
@@ -664,12 +664,15 @@ def render_config_page(
         }
     });
     
-    // 更新按钮状态 - 支持 A股(6位数字) 或 港股(hk+5位数字)
+    // 更新按钮状态 - 支持股票代码、ISIN、WKN
     function updateButtonState() {
         const code = codeInput.value.trim().toLowerCase();
         const isAStock = /^\\d{6}$/.test(code);           // A股: 600519
         const isHKStock = /^hk\\d{5}$/.test(code);        // 港股: hk00700
-        submitBtn.disabled = !(isAStock || isHKStock);
+        const isTicker = /^(?=.*[a-z])[a-z0-9]{1,8}(\\.[a-z]{1,5})?$/.test(code); // 代码: AAPL / 1COV.DE
+        const isISIN = /^[a-z]{2}[a-z0-9]{9}[0-9]$/.test(code); // ISIN
+        const isWKN = /^[a-z0-9]{6}$/.test(code);               // WKN
+        submitBtn.disabled = !(isAStock || isHKStock || isTicker || isISIN || isWKN);
     }
     
     // 格式化时间
@@ -849,10 +852,13 @@ def render_config_page(
     // 提交分析
     window.submitAnalysis = function() {
         const code = codeInput.value.trim().toLowerCase();
-        const isAStock = /^\d{6}$/.test(code);
-        const isHKStock = /^hk\d{5}$/.test(code);
+        const isAStock = /^\\d{6}$/.test(code);
+        const isHKStock = /^hk\\d{5}$/.test(code);
+        const isTicker = /^(?=.*[a-z])[a-z0-9]{1,8}(\\.[a-z]{1,5})?$/.test(code);
+        const isISIN = /^[a-z]{2}[a-z0-9]{9}[0-9]$/.test(code);
+        const isWKN = /^[a-z0-9]{6}$/.test(code);
         
-        if (!(isAStock || isHKStock)) {
+        if (!(isAStock || isHKStock || isTicker || isISIN || isWKN)) {
             return;
         }
         
@@ -922,8 +928,8 @@ def render_config_page(
           <input 
               type="text" 
               id="analysis_code" 
-              placeholder="A股 600519 / 港股 hk00700"
-              maxlength="8"
+              placeholder="代码 600519 / SAP.DE / ISIN / WKN"
+              maxlength="16"
               autocomplete="off"
           />
           <select id="report_type" class="report-select" title="选择报告类型">

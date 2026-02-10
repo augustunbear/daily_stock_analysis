@@ -62,6 +62,8 @@ _COMMON_STOCK_ALIASES: Dict[str, str] = {
     "伯克希尔": "BRK.B",
 }
 
+_IDENTIFIER_RESOLVE_CACHE: Dict[str, Optional[str]] = {}
+
 
 def _alias_key(value: str) -> str:
     cleaned = value.strip().lower()
@@ -73,11 +75,188 @@ def _looks_like_stock_code(value: str) -> bool:
     code = value.strip()
     if not code:
         return False
+    if re.match(r"^HK\d{4,5}$", code.upper()):
+        return True
     if re.match(r"^\d{4,6}(\.[A-Za-z]{1,5})?$", code):
         return True
     if re.match(r"^[A-Za-z]{1,5}(\.[A-Za-z]{1,5})?$", code):
         return True
     return False
+
+
+def is_isin_code(value: str) -> bool:
+    """判断是否为 ISIN（12位，末位校验位）"""
+    if not value:
+        return False
+    code = value.strip().upper()
+    return bool(re.match(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$", code))
+
+
+def is_wkn_code(value: str) -> bool:
+    """判断是否为 WKN（6位字母数字，可全数字）。"""
+    if not value:
+        return False
+    code = value.strip().upper()
+    return bool(re.match(r"^[A-Z0-9]{6}$", code))
+
+
+def _is_mainland_a_share_code(code: str) -> bool:
+    """判断是否是常见 A 股 6 位代码。"""
+    if not re.match(r"^\d{6}$", code):
+        return False
+    return code.startswith((
+        "600", "601", "603", "605", "688", "689",  # 沪市/科创板
+        "000", "001", "002", "003", "300", "301",  # 深市/创业板
+    ))
+
+
+def _lookup_symbol_by_identifier(identifier: str) -> Optional[str]:
+    """通过 Yahoo Finance 搜索接口将 ISIN/WKN 解析为股票代码。"""
+    cache_key = identifier.upper().strip()
+    if cache_key in _IDENTIFIER_RESOLVE_CACHE:
+        return _IDENTIFIER_RESOLVE_CACHE[cache_key]
+
+    resolved_symbol: Optional[str] = None
+
+    try:
+        import requests
+
+        response = requests.get(
+            "https://query2.finance.yahoo.com/v1/finance/search",
+            params={
+                "q": cache_key,
+                "quotesCount": 10,
+                "newsCount": 0,
+            },
+            timeout=6,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+            },
+        )
+        if response.status_code == 200:
+            payload = response.json()
+            quotes = payload.get("quotes") or []
+
+            candidates: List[str] = []
+            for quote in quotes:
+                symbol = str(quote.get("symbol") or "").strip().upper()
+                quote_type = str(quote.get("quoteType") or "").upper()
+                if not symbol:
+                    continue
+                if quote_type and quote_type not in {"EQUITY", "ETF", "MUTUALFUND"}:
+                    continue
+                candidates.append(symbol)
+
+            def _score_symbol(symbol: str) -> int:
+                score = 0
+                ident = cache_key
+
+                # 通用偏好：更像主板股票代码
+                if re.match(r"^[A-Z]{1,6}$", symbol):
+                    score += 30
+                if re.match(r"^[A-Z0-9]{1,8}\.[A-Z]{1,5}$", symbol):
+                    score += 10
+
+                # 按 ISIN 国家前缀做市场偏好
+                if is_isin_code(ident):
+                    country = ident[:2]
+                    if country == "US":
+                        # 美股优先：AAPL / BRK.B / XXX.NYSE
+                        if re.match(r"^[A-Z]{1,5}(\.[A-Z])?$", symbol):
+                            score += 60
+                        if symbol.endswith((".NYSE", ".NASDAQ", ".AMEX")):
+                            score += 50
+                        if symbol.endswith((".DE", ".F", ".L", ".PA", ".SW", ".AS")):
+                            score -= 30
+                    elif country == "DE":
+                        if symbol.endswith((".DE", ".F")):
+                            score += 60
+                    elif country == "GB":
+                        if symbol.endswith(".L"):
+                            score += 60
+                    elif country == "FR":
+                        if symbol.endswith(".PA"):
+                            score += 60
+                    elif country == "CH":
+                        if symbol.endswith(".SW"):
+                            score += 60
+                    elif country == "NL":
+                        if symbol.endswith(".AS"):
+                            score += 60
+
+                # WKN 常见于德国市场
+                elif is_wkn_code(ident):
+                    if symbol.endswith((".DE", ".F")):
+                        score += 40
+
+                return score
+
+            if candidates:
+                resolved_symbol = max(candidates, key=_score_symbol)
+
+    except Exception as exc:
+        logger.warning(f"通过标识符 {cache_key} 解析股票代码失败: {exc}")
+
+    if resolved_symbol:
+        logger.info(f"标识符解析成功: {cache_key} -> {resolved_symbol}")
+    else:
+        logger.warning(f"标识符解析失败: {cache_key}")
+
+    _IDENTIFIER_RESOLVE_CACHE[cache_key] = resolved_symbol
+    return resolved_symbol
+
+
+def _calculate_isin_check_digit(isin_without_check: str) -> str:
+    """计算 ISIN 校验位（Luhn 算法）。"""
+    expanded = ""
+    for ch in isin_without_check.upper():
+        if ch.isdigit():
+            expanded += ch
+        elif "A" <= ch <= "Z":
+            expanded += str(ord(ch) - ord("A") + 10)
+        else:
+            raise ValueError(f"ISIN 包含非法字符: {ch}")
+
+    # 末位先补 0 参与校验，计算真实 check digit
+    digits = expanded + "0"
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2 == 1:
+            n *= 2
+        total += (n // 10) + (n % 10)
+    return str((10 - (total % 10)) % 10)
+
+
+def _wkn_to_german_isin(wkn: str) -> Optional[str]:
+    """将 WKN 转换为德国 ISIN（DE000 + WKN + 校验位）。"""
+    normalized = wkn.strip().upper()
+    if not is_wkn_code(normalized):
+        return None
+    body = f"DE000{normalized}"
+    try:
+        check_digit = _calculate_isin_check_digit(body)
+    except Exception:
+        return None
+    return f"{body}{check_digit}"
+
+
+def _resolve_wkn_symbol(wkn: str) -> Optional[str]:
+    """解析 WKN 到股票代码（优先直查，其次转换为 ISIN 再查）。"""
+    resolved = _lookup_symbol_by_identifier(wkn)
+    if resolved:
+        return resolved
+
+    # 针对美股等非德股场景，增加关键词检索兜底
+    for query in (f"WKN {wkn}", f"{wkn} stock", f"{wkn} aktie"):
+        resolved = _lookup_symbol_by_identifier(query)
+        if resolved:
+            return resolved
+
+    german_isin = _wkn_to_german_isin(wkn)
+    if german_isin:
+        return _lookup_symbol_by_identifier(german_isin)
+    return None
 
 
 def resolve_stock_alias(stock_input: str) -> Optional[str]:
@@ -88,12 +267,35 @@ def resolve_stock_alias(stock_input: str) -> Optional[str]:
         return None
     raw = stock_input.strip()
     if _looks_like_stock_code(raw):
+        # 兼容德股 WKN 全数字场景：若不是常见 A 股前缀，尝试按 WKN 解析
+        if re.match(r"^\d{6}$", raw) and not _is_mainland_a_share_code(raw):
+            resolved_from_wkn = _resolve_wkn_symbol(raw)
+            if resolved_from_wkn:
+                return resolved_from_wkn
         return None
     key = _alias_key(raw)
     alias = _COMMON_STOCK_ALIASES.get(key) or _COMMON_STOCK_ALIASES.get(raw.strip())
     if alias:
         logger.info(f"股票名称别名解析: {stock_input} -> {alias}")
-    return alias
+        return alias
+
+    # 扩展支持：ISIN / WKN -> 股票代码（常用于德股）
+    if is_isin_code(raw):
+        return _lookup_symbol_by_identifier(raw)
+
+    if is_wkn_code(raw):
+        return _resolve_wkn_symbol(raw)
+
+    return None
+
+
+def normalize_stock_input(stock_input: str) -> str:
+    """将输入标准化为可分析的股票代码（无法解析则返回原值）。"""
+    raw = (stock_input or "").strip()
+    if not raw:
+        return ""
+    resolved = resolve_stock_alias(raw)
+    return resolved or raw
 
 
 class Market(Enum):

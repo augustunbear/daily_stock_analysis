@@ -26,6 +26,7 @@ from typing import Dict, Any, TYPE_CHECKING
 from web.services import get_config_service, get_analysis_service
 from web.templates import render_config_page
 from enums import ReportType
+from market_types import normalize_stock_input, is_isin_code, is_wkn_code
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
@@ -172,14 +173,36 @@ class ApiHandler:
                 status=HTTPStatus.BAD_REQUEST
             )
         
-        code = code_list[0].strip()
-        
-        # 验证股票代码格式：A股(6位数字) 或 港股(hk+5位数字)
-        code = code.lower()
-        is_valid = re.match(r'^\d{6}$', code) or re.match(r'^hk\d{5}$', code)
+        input_code = code_list[0].strip()
+
+        # 验证输入格式：A股、港股、美股/欧股、ISIN、WKN
+        code_lc = input_code.lower()
+        is_valid = (
+            re.match(r'^\d{6}$', code_lc) or
+            re.match(r'^hk\d{5}$', code_lc) or
+            re.match(r'^(?=.*[a-z])[a-z0-9]{1,8}(\.[a-z]{1,5})?$', code_lc) or
+            is_isin_code(input_code) or
+            is_wkn_code(input_code)
+        )
         if not is_valid:
             return JsonResponse(
-                {"success": False, "error": f"无效的股票代码格式: {code} (A股6位数字 或 港股hk+5位数字)"},
+                {
+                    "success": False,
+                    "error": (
+                        f"无效的股票代码格式: {input_code} "
+                        "(支持A股6位数字、港股hk+5位、股票代码、ISIN、WKN)"
+                    )
+                },
+                status=HTTPStatus.BAD_REQUEST
+            )
+
+        code = normalize_stock_input(input_code).lower()
+        if code == input_code.lower() and (is_isin_code(input_code) or is_wkn_code(input_code)):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": f"无法将标识符 {input_code} 解析为股票代码，请改用交易代码（如 SAP.DE）"
+                },
                 status=HTTPStatus.BAD_REQUEST
             )
         
@@ -190,6 +213,8 @@ class ApiHandler:
         # 提交异步分析任务
         try:
             result = self.analysis_service.submit_analysis(code, report_type=report_type)
+            if result.get("success"):
+                result["input_code"] = input_code
             return JsonResponse(result)
         except Exception as e:
             logger.error(f"[ApiHandler] 提交分析任务失败: {e}")
