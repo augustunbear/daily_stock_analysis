@@ -32,6 +32,7 @@ if os.getenv("GITHUB_ACTIONS") != "true":
 
 import argparse
 import logging
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -548,6 +549,18 @@ class StockAnalysisPipeline:
         if fundamentals:
             enhanced['fundamentals'] = fundamentals
 
+        if realtime_quote:
+            full_name = self._clean_text(getattr(realtime_quote, 'company_full_name', None))
+            if not full_name:
+                full_name = self._clean_text(getattr(realtime_quote, 'name', None)) or stock_name
+
+            intro = self._to_one_sentence(getattr(realtime_quote, 'company_intro', None))
+            if full_name or intro:
+                enhanced['company_profile'] = {
+                    'company_full_name': full_name,
+                    'company_intro': intro,
+                }
+
         try:
             scorer = get_factor_scorer()
             enhanced['factor_score'] = scorer.score(enhanced)
@@ -555,6 +568,24 @@ class StockAnalysisPipeline:
             logger.warning(f"因子评分计算失败: {exc}")
 
         return enhanced
+
+    @staticmethod
+    def _clean_text(value: Any) -> str:
+        if not isinstance(value, str):
+            return ""
+        cleaned = " ".join(value.replace("\n", " ").split())
+        return cleaned.strip()
+
+    def _to_one_sentence(self, value: Any, max_length: int = 180) -> str:
+        text = self._clean_text(value)
+        if not text:
+            return ""
+
+        sentence_split = re.split(r'(?<=[.!?。！？])\s+', text)
+        first_sentence = sentence_split[0].strip() if sentence_split else text
+        if len(first_sentence) > max_length:
+            return first_sentence[:max_length].rstrip() + "..."
+        return first_sentence
     
     def _describe_volume_ratio(self, volume_ratio: float) -> str:
         """

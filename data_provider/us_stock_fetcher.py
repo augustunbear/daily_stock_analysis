@@ -42,6 +42,8 @@ class USRealtimeQuote:
     
     code: str
     name: str = ""
+    company_full_name: str = ""
+    company_intro: str = ""
     
     # 基础价格数据
     price: float = 0.0           # 最新价
@@ -87,6 +89,8 @@ class USRealtimeQuote:
         return {
             'code': self.code,
             'name': self.name,
+            'company_full_name': self.company_full_name,
+            'company_intro': self.company_intro,
             'price': self.price,
             'change_pct': self.change_pct,
             'change_amount': self.change_amount,
@@ -472,6 +476,8 @@ class USStockFetcher(BaseFetcher):
         return USRealtimeQuote(
             code=stock_code,
             name=info.get('shortName') or info.get('longName') or symbol,
+            company_full_name=info.get('longName') or info.get('shortName') or symbol,
+            company_intro=info.get('longBusinessSummary') or info.get('businessSummary') or '',
             price=float(price or 0),
             change_pct=float(change_pct or 0),
             change_amount=float(change_amount or 0),

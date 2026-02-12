@@ -43,6 +43,8 @@ class EURealtimeQuote:
     
     code: str
     name: str = ""
+    company_full_name: str = ""
+    company_intro: str = ""
     exchange: str = ""          # 交易所名称
     currency: str = ""         # 货币代码
     
@@ -89,6 +91,8 @@ class EURealtimeQuote:
         return {
             'code': self.code,
             'name': self.name,
+            'company_full_name': self.company_full_name,
+            'company_intro': self.company_intro,
             'exchange': self.exchange,
             'currency': self.currency,
             'price': self.price,
@@ -563,6 +567,8 @@ class EUStockFetcher(BaseFetcher):
         return EURealtimeQuote(
             code=stock_code,
             name=info.get('shortName') or info.get('longName') or symbol,
+            company_full_name=info.get('longName') or info.get('shortName') or symbol,
+            company_intro=info.get('longBusinessSummary') or info.get('businessSummary') or '',
             exchange=exchange_info['name'],
             currency=exchange_info['currency'],
             price=float(price or 0),

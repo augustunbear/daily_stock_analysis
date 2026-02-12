@@ -309,6 +309,8 @@ class GeminiAnalyzer:
         },
         
         "intelligence": {
+            "company_full_name": "公司英文全称（优先官方英文名）",
+            "company_intro": "公司一句话简介（30字以内）",
             "latest_news": "【最新消息】近期重要新闻摘要",
             "risk_alerts": ["风险点1：具体描述", "风险点2：具体描述"],
             "positive_catalysts": ["利好1：具体描述", "利好2：具体描述"],
@@ -928,7 +930,19 @@ Returns:
         stock_name = context.get('stock_name', name)
         if not stock_name or stock_name == f'股票{code}':
             stock_name = STOCK_NAME_MAP.get(code, f'股票{code}')
-            
+
+        profile = context.get('company_profile', {}) if isinstance(context.get('company_profile'), dict) else {}
+        company_full_name = (
+            profile.get('company_full_name')
+            or context.get('company_full_name')
+            or stock_name
+        )
+        company_intro = (
+            profile.get('company_intro')
+            or context.get('company_intro')
+            or '暂无公司简介'
+        )
+              
         today = context.get('today', {})
         
         # 获取原始数据并转换货币
@@ -969,6 +983,8 @@ Returns:
 | 项目 | 数据 |
 |------|------|
 | 股票代码 | **{code}** |
+| 公司英文全称 | **{company_full_name}** |
+| 一句话简介 | {company_intro} |
 | 股票名称 | **{stock_name}** |
 | 分析日期 | {context.get('date', '未知')} |
 | 显示货币 | **{target_currency}** (原数据: {original_currency}) |

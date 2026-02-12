@@ -565,6 +565,18 @@ class NotificationService:
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return self._resolve_stock_name(result)
+
+    def _resolve_company_intro(self, result: AnalysisResult) -> str:
+        dashboard = result.dashboard if hasattr(result, 'dashboard') and result.dashboard else {}
+        intelligence = dashboard.get('intelligence', {}) if dashboard else {}
+        for key in ['company_intro', 'company_summary', 'intro']:
+            value = intelligence.get(key)
+            if isinstance(value, str) and value.strip():
+                cleaned = " ".join(value.strip().split())
+                if len(cleaned) > 140:
+                    return cleaned[:140].rstrip() + "..."
+                return cleaned
+        return "暂无公司简介"
     
     def generate_dashboard_report(
         self, 
@@ -1856,11 +1868,13 @@ class NotificationService:
         signal_emoji = result.get_emoji()
         stock_name = self._resolve_stock_name(result)
         full_name = self._resolve_company_full_name(result)
+        company_intro = self._resolve_company_intro(result)
         
         content = f"""# {signal_emoji} {stock_name} ({result.code}) 股票分析报告
 
 > **股票代码**：{result.code}  
 > **公司全名**：{full_name}
+> **一句话简介**：{company_intro}
 
 > **分析时间**：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
 > **综合评分**：{result.sentiment_score}/100 分  
@@ -1899,8 +1913,8 @@ class NotificationService:
 
 ## 📈 技术面分析
 
-### 标的：{stock_name} ({result.code})
-### 公司全名：{full_name}
+### 标的：{stock_name} ({result.code} | {full_name})
+### 一句话简介：{company_intro}
 
 ### 走势分析
 {result.trend_analysis if result.trend_analysis else '暂无分析'}
