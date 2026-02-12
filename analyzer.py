@@ -807,6 +807,7 @@ Returns:
             
             # 解析响应
             result = self._parse_response(response_text, code, name)
+            self._inject_company_profile_data(result, context)
             self._inject_reliable_price_data(result, context)
             result.factor_scores = context.get('factor_score')
             if result.factor_scores:
@@ -885,6 +886,36 @@ Returns:
             formatted = _format_price(value)
             if formatted:
                 price_position[field] = formatted
+
+    def _inject_company_profile_data(self, result: AnalysisResult, context: Dict[str, Any]) -> None:
+        if not result or not isinstance(context, dict):
+            return
+
+        profile = context.get('company_profile')
+        if not isinstance(profile, dict):
+            return
+
+        full_name = profile.get('company_full_name')
+        intro = profile.get('company_intro')
+
+        if not isinstance(full_name, str):
+            full_name = ''
+        if not isinstance(intro, str):
+            intro = ''
+
+        dashboard = result.dashboard if isinstance(result.dashboard, dict) else {}
+        intelligence = dashboard.get('intelligence')
+        if not isinstance(intelligence, dict):
+            intelligence = {}
+
+        if full_name.strip() and not intelligence.get('company_full_name'):
+            intelligence['company_full_name'] = full_name.strip()
+        if intro.strip() and not intelligence.get('company_intro'):
+            intelligence['company_intro'] = intro.strip()
+
+        if intelligence:
+            dashboard['intelligence'] = intelligence
+            result.dashboard = dashboard
     
     def _format_prompt(
         self, 

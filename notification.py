@@ -366,9 +366,14 @@ class NotificationService:
             emoji = result.get_emoji()
             confidence_stars = result.get_confidence_stars() if hasattr(result, 'get_confidence_stars') else '⭐⭐'
             stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+            full_name = self._resolve_company_full_name(result)
+            company_intro = self._resolve_company_intro(result)
             
             report_lines.extend([
                 f"### {emoji} {stock_name} ({result.code})",
+                "",
+                f"**公司英文全称**：{full_name}",
+                f"**一句话简介**：{company_intro}",
                 "",
                 f"**操作建议：{result.operation_advice}** | **综合评分：{result.sentiment_score}分** | **趋势预测：{result.trend_prediction}** | **置信度：{confidence_stars}**",
                 "",
@@ -623,9 +628,14 @@ class NotificationService:
             
             # 股票名称（优先使用 dashboard 或 result 中的名称）
             stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+            full_name = self._resolve_company_full_name(result)
+            company_intro = self._resolve_company_intro(result)
             
             report_lines.extend([
                 f"## {signal_emoji} {stock_name} ({result.code})",
+                "",
+                f"> **公司英文全称**：{full_name}",
+                f"> **一句话简介**：{company_intro}",
                 "",
             ])
             
@@ -919,9 +929,13 @@ class NotificationService:
             
             # 股票名称
             stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+            full_name = self._resolve_company_full_name(result)
+            company_intro = self._resolve_company_intro(result)
             
             # 标题行：信号等级 + 股票名称
             lines.append(f"### {signal_emoji} **{signal_text}** | {stock_name}({result.code})")
+            lines.append(f"🏢 {full_name[:60]}")
+            lines.append(f"📝 {company_intro[:70]}")
             lines.append("")
             
             # 核心决策（一句话）
@@ -1049,9 +1063,13 @@ class NotificationService:
         for result in sorted_results:
             emoji = result.get_emoji()
             stock_name = result.name if result.name and not result.name.startswith('股票') else f'股票{result.code}'
+            full_name = self._resolve_company_full_name(result)
+            company_intro = self._resolve_company_intro(result)
             
             # 核心信息行
             lines.append(f"### {emoji} {stock_name}({result.code})")
+            lines.append(f"🏢 {full_name[:60]}")
+            lines.append(f"📝 {company_intro[:70]}")
             lines.append(f"**{result.operation_advice}** | 评分:{result.sentiment_score} | {result.trend_prediction}")
             
             # 操作理由（截断）
@@ -1103,9 +1121,14 @@ class NotificationService:
         
         # 股票名称
         stock_name = self._resolve_stock_name(result)
+        full_name = self._resolve_company_full_name(result)
+        company_intro = self._resolve_company_intro(result)
         
         lines = [
             f"## {signal_emoji} {stock_name} ({result.code})",
+            "",
+            f"> **公司英文全称**：{full_name}",
+            f"> **一句话简介**：{company_intro}",
             "",
             f"> {report_date} | 评分: **{result.sentiment_score}** | {result.trend_prediction}",
             "",
